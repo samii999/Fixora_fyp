@@ -1,0 +1,107 @@
+✅ STAGE 1: PROJECT SETUP (Already Done)
+ Expo Project Initialized
+
+ Folder Structure Finalized (src/*)
+
+ Supabase Bucket: reports
+
+ Firebase Firestore Structure Finalized
+
+ Config Files for Firebase & Supabase
+
+✅ STAGE 2: AUTHENTICATION SYSTEM
+🔹 Step 1: Auth UI
+ Login Screen
+
+ Signup Screen
+
+ Role selection (User / Admin / Staff)
+
+ Form validations (email, password, etc.)
+
+🔹 Step 2: Firebase Auth
+ Email/Password Authentication (Firebase Auth)
+
+ Save user profile in Firestore under /users
+
+ Role-based navigation after login (AppNavigator)
+
+✅ STAGE 3: ORGANIZATION MANAGEMENT (Admin Panel)
+🔹 Admin Can:
+ Create Organization (Add to Firestore organizations)
+
+ View All Organizations
+
+ Approve/Reject Staff Join Requests
+
+ Assign Permissions (via Firestore array in admin doc)
+
+✅ STAGE 4: STAFF MODULE
+🔹 Staff Can:
+ Request to Join an Organization
+
+ View Their Organization Details
+
+ View Their Status (pending/approved)
+
+✅ STAGE 5: REPORTING MODULE
+🔹 Users Can:
+ Submit Reports (Form UI + Validation)
+
+ Upload Image to Supabase → get image URL
+
+ Save Report in Firestore reports collection with:
+
+User info
+
+Location (GPS using Expo Location)
+
+Image URL (from Supabase)
+
+Date/time
+
+✅ STAGE 6: MAP VIEW (Optional AI Feature)
+ Use OpenStreetMap (Nominatim API) or Leaflet via WebView
+
+ Show Report Markers on Map (Coordinates from reports)
+
+ Filter by category or location
+
+ Click marker to view report detail
+
+✅ STAGE 7: AI MODULE (Optional)
+ Collect Datasets (report categories, patterns, etc.)
+
+ Run basic ML on device or send to backend for:
+
+Auto-tagging categories
+
+Suggesting similar cases
+
+✅ STAGE 8: UI POLISH & FINALIZATION
+ Apply consistent color scheme and fonts
+
+ Button styles using shadcn/ui or Tailwind
+
+ Smooth transitions (framer-motion or animated API)
+
+ Error messages / loading states
+
+✅ STAGE 9: TESTING + DEPLOYMENT
+ Test on Android + iOS
+
+ Test on Web (npx expo start --web)
+
+ Build for deployment (eas build)
+
+🧠 Final Tips
+Keep reusable components in src/components
+
+Use src/hooks for custom logic (auth, location, etc.)
+
+Use context or zustand for state management if needed
+
+Store local data with AsyncStorage when needed
+
+Document your code with comments
+

@@ -1,0 +1,113 @@
+organization structure
+/ (Root)
+├── organizations (Collection)
+│   ├── org_cda (Document)
+│   │   ├── adminIDs (Array)
+│   │   │   └── [0] (Object)
+│   │   │       └── name: "CDA" (String)
+│   │   └── staffIds: [] (Array)
+│   ├── org_fesco (Document)
+│   │   └── ... (similar fields as org_cda, potentially)
+│   ├── org_gepco (Document)
+│   │   └── ...
+│   ├── org_iesco (Document)
+│   │   └── ...
+│   ├── org_kda (Document)
+│   │   └── ...
+│   ├── org_kelectric (Document)
+│   │   └── ...
+│   ├── org_lda (Document)
+│   │   └── ...
+│   ├── org_lesco (Document)
+│   │   └── ...
+│   ├── org_lwmc (Document)
+│   │   └── ...
+│   ├── org_mcg (Document)
+│   │   └── ...
+│   ├── org_mcl (Document)
+│   │   └── ...
+│   ├── org_mepco (Document)
+│   │   └── ...
+│   └── org_nha (Document)
+│       └── ...
+├── reports (Collection)
+│   └── ... (Documents and fields specific to reports)
+└── users (Collection)
+    └── ... (Documents and fields specific to users) 
+
+user database
+
+/ (Root)
+└── users (Collection)
+    ├── 4q4jfd4e55Nuk4Ma0OEWwP_ (Document - likely an auto-generated ID)
+    │   └── ... (Fields similar to 'user' document)
+    ├── admin (Document)
+    │   └── ... (Fields similar to 'user' document)
+    ├── staff (Document)
+    │   └── ... (Fields similar to 'user' document)
+    └── user (Document - currently selected)
+        ├── createdAt: 1 May 2025 at 20:44:30 UTC+5 (Timestamp/Date-time)
+        ├── email: "" (String)
+        ├── name: "" (String)
+        ├── phone: "" (String)
+        ├── role: "" (String)
+        ├── uid: "" (String)
+        └── verified: false (Boolean)
+
+
+admin database
+/ (Root)
+└── users (Collection)
+    ├── 4q4jfd4e55Nuk4Ma0OEWwP_ (Document - likely an auto-generated ID)
+    │   └── ...
+    ├── admin (Document - currently selected in the image)
+    │   ├── createdAt: 1 May 2025 at 20:49:41 UTC+5 (Timestamp/Date-time)
+    │   ├── email: "" (String)
+    │   ├── name: "" (String)
+    │   ├── organizationId: "" (String - *Key for linking to organizations*)
+    │   ├── permissions (Array/Map - structure not fully visible but shows index 0)
+    │   │   └── [0] (Likely an object or string defining a permission)
+    │   ├── phone: "" (String)
+    │   ├── role: "admin" (String)
+    │   └── uid: "" (String)
+    └── staff (Document)
+    │   └── ...
+    └── user (Document)
+        └── ...
+
+
+staff database
+/ (Root)
+└── users (Collection)
+    ├── ... (other user documents like '4q4jfd4e55Nuk4Ma0OEWwP_' and 'admin')
+    └── staff (Document - currently selected in the image)
+        ├── createdAt: 1 May 2025 at 20:47:33 UTC+5 (Timestamp/Date-time)
+        ├── email: "" (String)
+        ├── name: "" (String)
+        ├── organizationId: "" (String - *Key for linking to organizations*)
+        ├── phone: "" (String)
+        ├── position: "" (String)
+        ├── role: "staff" (String)
+        ├── status: "pending" (String)
+        └── uid: "" (String)
+
+reports
+/ (Root)
+└── reports (Collection)
+    └── rep (Document - currently selected in the image)
+        ├── category: "Water Leakage" (String)
+        ├── createdAt: 4 May 2025 at 16:27:34 UTC+5 (Timestamp/Date-time)
+        ├── description: "How are you" (String)
+        ├── imageUrl: "https://xbyeahxbmhxwifbila.supabase.co/storage/v1/object/public/reports/4e1a5-4b7b-9277-3c5a0984df28.jpeg" (String - URL)
+        ├── location (Object/Map)
+        │   ├── latitude: 31.52299948790858 (Number/Float)
+        │   └── longitude: 74.35935895889997 (Number/Float)
+        ├── organizationAssigned: "" (String)
+        ├── organizationId: "" (String - *Key for linking to organizations*)
+        ├── reportId: "RPT_1746358051446" (String - Unique Report ID)
+        ├── status: "pending" (String)
+        └── uid: "desoYd3yMdbcMSlWUl7JyAGmWyyM2" (String - User ID who submitted the report)
+
+
+supabase bucket name 
+reports where storeimage

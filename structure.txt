@@ -1,0 +1,79 @@
+FixoraApp/
+│
+├── App.js                       # Entry point
+├── app.json                     # Expo config
+├── package.json                 # Dependencies
+├── babel.config.js              # Babel settings
+│
+├── assets/                      # Static files (images, icons, etc.)
+│   ├── images/
+│   ├── icons/
+│   └── fonts/
+│
+├── src/
+│   ├── api/                     # Firebase & Supabase functions
+│   │   ├── firebase.js
+│   │   ├── supabase.js
+│   │   └── aiCategorizer.js     # (Optional) For ML-based issue detection
+│
+│   ├── components/              # Reusable components
+│   │   ├── common/              # Buttons, inputs, cards
+│   │   │   ├── Button.jsx
+│   │   │   ├── Input.jsx
+│   │   │   └── IssueCard.jsx
+│   │   └── layout/              # Header, Footer, Loader
+│   │       ├── Header.jsx
+│   │       └── Loader.jsx
+│
+│   ├── config/                  # App configuration
+│   │   ├── colors.js
+│   │   ├── fonts.js
+│   │   ├── firebaseConfig.js
+│   │   └── supabaseClient.js
+│
+│   ├── context/                 # Global state (auth, theme, etc.)
+│   │   ├── AuthContext.js
+│   │   └── AppProvider.js
+│
+│   ├── data/                    # Dummy data, constants
+│   │   └── sampleIssues.js
+│
+│   ├── hooks/                   # Custom React hooks
+│   │   └── useAuth.js
+│
+│   ├── navigation/              # Navigation (Stack, Tab)
+│   │   └── AppNavigator.js
+│
+│   ├── screens/                 # All App Screens
+│   │   ├── Auth/                # Login/Signup + Role
+│   │   │   ├── RoleSelectionScreen.jsx
+│   │   │   ├── LoginScreen.jsx
+│   │   │   └── SignupScreen.jsx
+│   │   ├── Main/                # Regular User Screens
+│   │   │   ├── HomeScreen.jsx
+│   │   │   ├── ReportIssueScreen.jsx
+│   │   │   ├── IssueDetailsScreen.jsx
+│   │   │   └── ProfileScreen.jsx
+│   │   ├── Admin/               # Admin Panel
+│   │   │   ├── DashboardScreen.jsx
+│   │   │   ├── CreateOrganizationScreen.jsx
+│   │   │   └── ManageStaffScreen.jsx
+│   │   ├── Staff/               # Staff-Specific Screens
+│   │   │   ├── JoinOrganizationScreen.jsx
+│   │   │   ├── StaffProfileScreen.jsx
+│   │   │   └── StatusScreen.jsx
+│   │   └── SplashScreen.jsx     # Initial loading
+│
+│   ├── services/                # Backend communication logic
+│   │   ├── authService.js
+│   │   ├── issueService.js
+│   │   └── notificationService.js
+│
+│   ├── utils/                   # Helper functions, validators
+│   │   ├── helpers.js
+│   │   └── validators.js
+│
+│   └── styles/                  # Centralized styling
+│       └── globalStyles.js
+│
+└── .gitignore

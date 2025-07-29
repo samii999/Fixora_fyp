@@ -1,0 +1,52 @@
+/*
+==================== FIXORA - FINAL YEAR PROJECT ====================
+
+Fixora is a mobile app built using **React Native (Expo)** with **Firebase** 
+and **Supabase**. It provides a centralized system to report and manage
+municipal issues like garbage, broken roads, water leakage, etc.
+
+========================= TECHNOLOGIES USED =========================
+
+- React Native (Expo)
+- Firebase Authentication
+- Firebase Firestore (Database)
+- Firebase Storage (Optional)
+- Supabase (For report image storage)
+- React Navigation
+- Tailwind for styling (optional)
+- OpenStreetMap or Leaflet (future map view)
+
+======================== USER ROLES & FLOW ==========================
+
+1. 🔐 **Authentication System** (Stage 2)
+   - Role Selection → Login/Signup
+   - Role saved in Firebase Auth & Firestore
+
+2. 👤 **Roles**
+   - **Admin**
+     - Can create & manage organizations
+     - See staff requests and approve/reject
+   - **Staff**
+     - Can request to join an organization
+     - View their status & assigned reports
+   - **User**
+     - Can submit municipal issue reports with images and location
+
+======================= FIRESTORE STRUCTURE ========================
+
+✔ `users` - stores all users with role info
+✔ `organizations` - created by admins
+✔ `staffRequests` - handles staff joining requests
+✔ `reports` - submitted by users (with Supabase image URLs)
+
+======================= REPORT FLOW ================================
+
+User → Submit Report → Stored in Firestore → Admin/Staff handles it
+
+====================================================================
+
+Developed By: Muhammad Usman (SP22-BCS-036)
+Project Name: Fixora - Final Year Project
+University: [Your University Name]
+
+*/
