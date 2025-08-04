@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, SafeAreaView } from 'react-native';
 import { db, auth } from '../../config/firebaseConfig';
-import { collection, addDoc, doc, updateDoc } from 'firebase/firestore';
+import { doc, setDoc, updateDoc } from 'firebase/firestore';
 
 const CreateOrganizationScreen = ({ navigation }) => {
   const [name, setName] = useState('');
@@ -15,27 +15,51 @@ const CreateOrganizationScreen = ({ navigation }) => {
       return;
     }
 
+    // Validate slug format (should be like "org_cda")
+    if (!slug.startsWith('org_')) {
+      Alert.alert("Invalid Slug", "Slug must start with 'org_' (e.g., org_cda, org_wasa)");
+      return;
+    }
+
     setLoading(true);
     try {
-      // 1. Create organization
-      const docRef = await addDoc(collection(db, 'organizations'), {
-        name,
-        slug,
-        category,
-        createdBy: auth.currentUser.uid,
+      // Get current user data
+      const currentUser = auth.currentUser;
+      
+      // Create organization document with proper structure
+      const organizationData = {
+        adminIDs: [
+          {
+            uid: currentUser.uid,
+            name: name, // Organization name
+            email: currentUser.email,
+            createdAt: new Date()
+          }
+        ],
+        staffIds: [], // Empty array initially
+        name: name,
+        slug: slug,
+        category: category || 'General',
         createdAt: new Date(),
-      });
+        createdBy: currentUser.uid
+      };
 
-      // 2. Update current user with role + org ID
-      await updateDoc(doc(db, 'users', auth.currentUser.uid), {
+      // Create organization with custom document ID
+      await setDoc(doc(db, 'organizations', slug), organizationData);
+
+      // Update current user with role + org ID
+      await updateDoc(doc(db, 'users', currentUser.uid), {
         role: 'admin',
-        organizationId: docRef.id,
+        organizationId: slug, // Use slug as organization ID
+        name: name, // Set user name to organization name
+        createdAt: new Date(),
       });
 
       Alert.alert("Success", "Organization created successfully!");
       navigation.navigate("AdminTabs");
     } catch (err) {
-      Alert.alert("Error", err.message);
+      console.error('Create organization error:', err);
+      Alert.alert("Error", err.message || "Failed to create organization");
     } finally {
       setLoading(false);
     }
@@ -53,7 +77,7 @@ const CreateOrganizationScreen = ({ navigation }) => {
             style={styles.input} 
             value={name} 
             onChangeText={setName} 
-            placeholder="e.g. WASA" 
+            placeholder="e.g. Water and Sanitation Authority" 
           />
 
           <Text style={styles.label}>Organization Slug *</Text>
@@ -61,8 +85,10 @@ const CreateOrganizationScreen = ({ navigation }) => {
             style={styles.input} 
             value={slug} 
             onChangeText={setSlug} 
-            placeholder="e.g. wasa-001" 
+            placeholder="e.g. org_wasa" 
+            autoCapitalize="none"
           />
+          <Text style={styles.helperText}>Must start with 'org_' (e.g., org_cda, org_wasa)</Text>
 
           <Text style={styles.label}>Category (optional)</Text>
           <TextInput 
@@ -129,10 +155,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E1E5E9',
     padding: 12,
-    marginBottom: 16,
+    marginBottom: 8,
     borderRadius: 8,
     fontSize: 16,
     backgroundColor: '#F8F9FA',
+  },
+  helperText: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 16,
+    fontStyle: 'italic',
   },
   button: {
     backgroundColor: '#007AFF',

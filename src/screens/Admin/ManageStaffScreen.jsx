@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, FlatList, Switch, TouchableOpacity, StyleSheet, Alert, SafeAreaView, ActivityIndicator } from 'react-native';
 import { db } from '../../config/firebaseConfig';
-import { collection, query, where, getDocs, updateDoc, doc, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, updateDoc, doc, getDoc } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
 
 const ManageStaffScreen = () => {
@@ -49,6 +49,7 @@ const ManageStaffScreen = () => {
       await updateDoc(userRef, { permissions: newPermissions });
       fetchStaff(); // refresh UI
     } catch (err) {
+      console.error('Permission toggle error:', err);
       Alert.alert('Error', 'Failed to update permissions.');
     }
   };
@@ -61,13 +62,30 @@ const ManageStaffScreen = () => {
         style: 'destructive',
         onPress: async () => {
           try {
+            // Get admin's organization ID
+            const userDoc = await getDoc(doc(db, 'users', user.uid));
+            const adminOrgId = userDoc.data()?.organizationId;
+            
+            // Update user to remove from organization
             await updateDoc(doc(db, "users", uid), {
               organizationId: null,
               permissions: {},
+              status: 'removed'
             });
+
+            // Update organization document - remove from staffIds array
+            const orgRef = doc(db, 'organizations', adminOrgId);
+            const orgDoc = await getDoc(orgRef);
+            if (orgDoc.exists()) {
+              const orgData = orgDoc.data();
+              const updatedStaffIds = orgData.staffIds.filter(staffId => staffId !== uid);
+              await updateDoc(orgRef, { staffIds: updatedStaffIds });
+            }
+
             fetchStaff();
             Alert.alert('Success', 'Staff member removed successfully.');
           } catch (error) {
+            console.error('Remove staff error:', error);
             Alert.alert('Error', 'Failed to remove staff member.');
           }
         }
@@ -80,6 +98,10 @@ const ManageStaffScreen = () => {
       <View style={styles.staffHeader}>
         <Text style={styles.name}>{item.name || item.email || 'Unnamed'}</Text>
         <Text style={styles.email}>{item.email}</Text>
+        {item.position && (
+          <Text style={styles.position}>Position: {item.position}</Text>
+        )}
+        <Text style={styles.status}>Status: {item.status || 'active'}</Text>
       </View>
 
       <View style={styles.permissionsSection}>
@@ -215,6 +237,17 @@ const styles = StyleSheet.create({
   email: {
     fontSize: 14,
     color: '#666',
+    marginBottom: 4,
+  },
+  position: {
+    fontSize: 14,
+    color: '#007AFF',
+    marginBottom: 4,
+  },
+  status: {
+    fontSize: 12,
+    color: '#666',
+    fontStyle: 'italic',
   },
   permissionsSection: {
     marginBottom: 16,

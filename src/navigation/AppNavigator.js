@@ -11,12 +11,14 @@ import SplashScreen from '../screens/SplashScreen';
 import RoleSelectionScreen from '../screens/Auth/RoleSelectionScreen';
 import LoginScreen from '../screens/Auth/LoginScreen';
 import SignupScreen from '../screens/Auth/SignupScreen';
+import PendingApprovalScreen from '../screens/Auth/PendingApprovalScreen';
 
 // Main Screens
 import HomeScreen from '../screens/Main/HomeScreen';
 import ProfileScreen from '../screens/Main/ProfileScreen';
 import ReportIssueScreen from '../screens/Main/ReportIssueScreen';
 import IssueDetailScreen from '../screens/Main/IssueDetailScreen';
+import MyReportsScreen from '../screens/Main/MyReportsScreen';
 
 // Admin Screens
 import DashboardScreen from '../screens/Admin/DashboardScreen';
@@ -31,6 +33,8 @@ import AdminSettingsScreen from '../screens/Admin/AdminSettingsScreen';
 import StaffProfileScreen from '../screens/Staff/StaffProfileScreen';
 import JoinOrganizationScreen from '../screens/Staff/JoinOrganizationScreen';
 import StatusScreen from '../screens/Staff/StatusScreen';
+import StaffHomeScreen from '../screens/Staff/homescreen';
+import StaffReportsScreen from '../screens/Staff/StaffReportsScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -62,6 +66,16 @@ const MainTabNavigator = () => {
           tabBarLabel: 'Report',
           tabBarIcon: ({ color, size }) => (
             <Text style={{ color, fontSize: size }}>📝</Text>
+          ),
+        }}
+      />
+      <Tab.Screen 
+        name="MyReports" 
+        component={MyReportsScreen}
+        options={{
+          tabBarLabel: 'My Reports',
+          tabBarIcon: ({ color, size }) => (
+            <Text style={{ color, fontSize: size }}>📋</Text>
           ),
         }}
       />
@@ -101,6 +115,16 @@ const AdminTabNavigator = () => {
         }}
       />
       <Tab.Screen 
+        name="AdminReports" 
+        component={AdminReportsScreen}
+        options={{
+          tabBarLabel: 'Reports',
+          tabBarIcon: ({ color, size }) => (
+            <Text style={{ color, fontSize: size }}>📄</Text>
+          ),
+        }}
+      />
+      <Tab.Screen 
         name="ManageStaff" 
         component={ManageStaffScreen}
         options={{
@@ -133,8 +157,18 @@ const StaffTabNavigator = () => {
         tabBarActiveTintColor: '#007AFF',
         tabBarInactiveTintColor: '#8E8E93',
       }}
-      initialRouteName="Status"
+      initialRouteName="Home"
     >
+      <Tab.Screen 
+        name="Home" 
+        component={StaffHomeScreen}
+        options={{
+          tabBarLabel: 'Home',
+          tabBarIcon: ({ color, size }) => (
+            <Text style={{ color, fontSize: size }}>🏠</Text>
+          ),
+        }}
+      />
       <Tab.Screen 
         name="Status" 
         component={StatusScreen}
@@ -142,6 +176,16 @@ const StaffTabNavigator = () => {
           tabBarLabel: 'Status',
           tabBarIcon: ({ color, size }) => (
             <Text style={{ color, fontSize: size }}>📋</Text>
+          ),
+        }}
+      />
+      <Tab.Screen 
+        name="Reports" 
+        component={StaffReportsScreen}
+        options={{
+          tabBarLabel: 'Reports',
+          tabBarIcon: ({ color, size }) => (
+            <Text style={{ color, fontSize: size }}>📄</Text>
           ),
         }}
       />
@@ -160,10 +204,20 @@ const StaffTabNavigator = () => {
 };
 
 const AppNavigator = () => {
-  const { loading, isAuthenticated, userRole } = useAuth();
+  const { loading, isAuthenticated, userRole, isPendingStaff, roleDetermined } = useAuth();
 
-  // Show splash until both auth and userRole are ready
-  if (loading || (isAuthenticated && !userRole)) {
+  // Show splash until both auth and role determination are complete
+  if (loading || !roleDetermined) {
+    return <SplashScreen />;
+  }
+
+  // Show pending approval screen for pending staff
+  if (isAuthenticated && isPendingStaff) {
+    return <PendingApprovalScreen />;
+  }
+
+  // If authenticated but no role, show splash (this shouldn't happen normally)
+  if (isAuthenticated && !userRole) {
     return <SplashScreen />;
   }
 
@@ -175,8 +229,10 @@ const AppNavigator = () => {
       case 'staff':
         return <Stack.Screen name="StaffTabs" component={StaffTabNavigator} />;
       case 'user':
-      default:
         return <Stack.Screen name="MainTabs" component={MainTabNavigator} />;
+      default:
+        // If we reach here, something is wrong - show splash
+        return null;
     }
   };
 
@@ -195,16 +251,20 @@ const AppNavigator = () => {
           </>
         ) : (
           <>
-            {getRoleTabs()}
-            {/* Common screens for all roles */}
-            <Stack.Screen name="IssueDetail" component={IssueDetailScreen} />
-            <Stack.Screen name="CreateOrganization" component={CreateOrganizationScreen} />
-            <Stack.Screen name="AssignPermissions" component={AssignPermissionsScreen} />
-            <Stack.Screen name="JoinOrganization" component={JoinOrganizationScreen} />
-            {/* Admin-specific screens */}
-            <Stack.Screen name="AdminReports" component={AdminReportsScreen} />
-            <Stack.Screen name="AdminAnalytics" component={AdminAnalyticsScreen} />
-            <Stack.Screen name="AdminSettings" component={AdminSettingsScreen} />
+            {getRoleTabs() && (
+              <>
+                {getRoleTabs()}
+                {/* Common screens for all roles */}
+                <Stack.Screen name="IssueDetail" component={IssueDetailScreen} />
+                <Stack.Screen name="CreateOrganization" component={CreateOrganizationScreen} />
+                <Stack.Screen name="AssignPermissions" component={AssignPermissionsScreen} />
+                <Stack.Screen name="JoinOrganization" component={JoinOrganizationScreen} />
+                {/* Admin-specific screens */}
+                <Stack.Screen name="AdminReports" component={AdminReportsScreen} />
+                <Stack.Screen name="AdminAnalytics" component={AdminAnalyticsScreen} />
+                <Stack.Screen name="AdminSettings" component={AdminSettingsScreen} />
+              </>
+            )}
           </>
         )}
       </Stack.Navigator>

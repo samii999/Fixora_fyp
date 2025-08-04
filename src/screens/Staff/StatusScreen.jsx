@@ -11,7 +11,7 @@ const StatusScreen = () => {
 
   const fetchStatus = async () => {
     try {
-      const docRef = doc(db, 'staff_requests', user.uid);
+      const docRef = doc(db, 'users', user.uid);
       const snap = await getDoc(docRef);
 
       if (snap.exists()) {
@@ -33,7 +33,7 @@ const StatusScreen = () => {
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'approved':
+      case 'active':
         return '#28A745';
       case 'rejected':
         return '#FF3B30';
@@ -46,7 +46,7 @@ const StatusScreen = () => {
 
   const getStatusText = (status) => {
     switch (status) {
-      case 'approved':
+      case 'active':
         return 'Approved';
       case 'rejected':
         return 'Rejected';
@@ -81,7 +81,7 @@ const StatusScreen = () => {
           {getStatusText(status)}
         </Text>
         
-        {status === 'approved' && (
+        {status === 'active' && (
           <View style={styles.messageContainer}>
             <Text style={styles.messageText}>
               🎉 Congratulations! Your request has been approved. You can now access staff features.

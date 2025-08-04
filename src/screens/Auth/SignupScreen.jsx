@@ -1,15 +1,18 @@
 // src/screens/Auth/SignupScreen.jsx
 import React, { useState } from 'react';
-import { View, Text, TextInput, Alert, StyleSheet, TouchableOpacity, SafeAreaView } from 'react-native';
+import { View, Text, TextInput, Alert, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { auth, db } from '../../config/firebaseConfig';
 import { useNavigation, useRoute } from '@react-navigation/native';
 
 const SignupScreen = () => {
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [organizationSlug, setOrganizationSlug] = useState('');
   const [loading, setLoading] = useState(false);
   const navigation = useNavigation();
   const route = useRoute();
@@ -17,8 +20,19 @@ const SignupScreen = () => {
   const { role } = route.params || {};
 
   const handleSignup = async () => {
-    if (!email || !password || !confirmPassword) {
-      Alert.alert('Error', 'Please fill all fields');
+    // Validation
+    if (!firstName || !lastName || !email || !password) {
+      Alert.alert('Error', 'Please fill all required fields');
+      return;
+    }
+
+    if (!confirmPassword) {
+      Alert.alert('Error', 'Please confirm your password');
+      return;
+    }
+
+    if (role === 'staff' && !organizationSlug) {
+      Alert.alert('Error', 'Please enter organization ID');
       return;
     }
 
@@ -32,17 +46,80 @@ const SignupScreen = () => {
       return;
     }
 
+    // Validate organization slug format for staff
+    if (role === 'staff' && !organizationSlug.startsWith('org_')) {
+      Alert.alert('Error', 'Organization ID must start with "org_" (e.g., org_wasa)');
+      return;
+    }
+
     setLoading(true);
     try {
       const userCred = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCred.user;
+      const fullName = `${firstName} ${lastName}`;
 
-      await setDoc(doc(db, 'users', user.uid), {
-        uid: user.uid,
-        email: user.email,
-        role: role?.toLowerCase() || 'user',
-        createdAt: new Date(),
-      });
+      if (role === 'admin') {
+        // For admin, create user document
+        await setDoc(doc(db, 'users', user.uid), {
+          uid: user.uid,
+          email: user.email,
+          firstName: firstName,
+          lastName: lastName,
+          name: fullName,
+          role: 'admin',
+          createdAt: new Date(),
+        });
+      } else if (role === 'staff') {
+        // For staff, check if organization exists
+        const orgQuery = query(
+          collection(db, 'organizations'),
+          where('__name__', '==', organizationSlug)
+        );
+        const orgSnapshot = await getDocs(orgQuery);
+        
+        if (orgSnapshot.empty) {
+          Alert.alert('Error', 'Organization not found. Please check the organization ID.');
+          return;
+        }
+
+        // Create staff request
+        await setDoc(doc(db, 'staff_requests', user.uid), {
+          uid: user.uid,
+          email: user.email,
+          firstName: firstName,
+          lastName: lastName,
+          name: fullName,
+          organizationId: organizationSlug,
+          status: 'pending',
+          createdAt: new Date(),
+        });
+
+        // Create user document with pending status
+        await setDoc(doc(db, 'users', user.uid), {
+          uid: user.uid,
+          email: user.email,
+          firstName: firstName,
+          lastName: lastName,
+          name: fullName,
+          role: 'staff',
+          organizationId: organizationSlug,
+          status: 'pending',
+          createdAt: new Date(),
+        });
+
+        Alert.alert('Success', 'Staff account created! Your request is pending admin approval.');
+      } else {
+        // For regular users
+        await setDoc(doc(db, 'users', user.uid), {
+          uid: user.uid,
+          email: user.email,
+          firstName: firstName,
+          lastName: lastName,
+          name: fullName,
+          role: 'user',
+          createdAt: new Date(),
+        });
+      }
 
       Alert.alert('Success', 'Account created successfully!');
       // Navigation will be handled by AuthContext automatically
@@ -59,57 +136,98 @@ const SignupScreen = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Create Account</Text>
-          <Text style={styles.subtitle}>Sign up as a {role || 'User'}</Text>
-        </View>
+      <KeyboardAvoidingView 
+        style={styles.keyboardAvoidingView}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      >
+        <ScrollView 
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.content}>
+            <View style={styles.header}>
+              <Text style={styles.title}>Create Account</Text>
+              <Text style={styles.subtitle}>Sign up as a {role || 'User'}</Text>
+            </View>
 
-        <View style={styles.form}>
-          <TextInput 
-            placeholder="Email" 
-            value={email} 
-            onChangeText={setEmail} 
-            style={styles.input}
-            autoCapitalize="none"
-            keyboardType="email-address"
-            autoComplete="email"
-          />
-          <TextInput 
-            placeholder="Password" 
-            secureTextEntry 
-            value={password} 
-            onChangeText={setPassword} 
-            style={styles.input}
-            autoComplete="new-password"
-          />
-          <TextInput 
-            placeholder="Confirm Password" 
-            secureTextEntry 
-            value={confirmPassword} 
-            onChangeText={setConfirmPassword} 
-            style={styles.input}
-            autoComplete="new-password"
-          />
-          
-          <TouchableOpacity 
-            style={[styles.signupButton, loading && styles.buttonDisabled]} 
-            onPress={handleSignup}
-            disabled={loading}
-          >
-            <Text style={styles.signupButtonText}>
-              {loading ? 'Creating Account...' : 'Create Account'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-        
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>Already have an account?</Text>
-          <TouchableOpacity onPress={handleLogin}>
-            <Text style={styles.loginLink}>Sign In</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+            <View style={styles.form}>
+              <TextInput 
+                placeholder="First Name" 
+                value={firstName} 
+                onChangeText={setFirstName} 
+                style={styles.input}
+                autoCapitalize="words"
+                returnKeyType="next"
+              />
+              <TextInput 
+                placeholder="Last Name" 
+                value={lastName} 
+                onChangeText={setLastName} 
+                style={styles.input}
+                autoCapitalize="words"
+                returnKeyType="next"
+              />
+              <TextInput 
+                placeholder="Email" 
+                value={email} 
+                onChangeText={setEmail} 
+                style={styles.input}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                autoComplete="email"
+                returnKeyType="next"
+              />
+              <TextInput 
+                placeholder="Password" 
+                secureTextEntry 
+                value={password} 
+                onChangeText={setPassword} 
+                style={styles.input}
+                autoComplete="new-password"
+                returnKeyType="next"
+              />
+              <TextInput 
+                placeholder="Confirm Password" 
+                secureTextEntry 
+                value={confirmPassword} 
+                onChangeText={setConfirmPassword} 
+                style={styles.input}
+                autoComplete="new-password"
+                returnKeyType="next"
+              />
+              {role === 'staff' && (
+                <TextInput 
+                  placeholder="Organization Slug (e.g., org_wasa)" 
+                  value={organizationSlug} 
+                  onChangeText={setOrganizationSlug} 
+                  style={styles.input}
+                  autoCapitalize="none"
+                  returnKeyType="done"
+                />
+              )}
+              
+              <TouchableOpacity 
+                style={[styles.signupButton, loading && styles.buttonDisabled]} 
+                onPress={handleSignup}
+                disabled={loading}
+              >
+                <Text style={styles.signupButtonText}>
+                  {loading ? 'Creating Account...' : 'Create Account'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.footer}>
+              <Text style={styles.footerText}>Already have an account?</Text>
+              <TouchableOpacity onPress={handleLogin}>
+                <Text style={styles.loginLink}>Sign In</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
@@ -119,10 +237,18 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
   },
+  keyboardAvoidingView: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 40, // Add extra padding at bottom for keyboard
+  },
   content: {
     flex: 1,
     padding: 20,
     justifyContent: 'center',
+    minHeight: '100%', // Ensure content takes full height
   },
   header: {
     alignItems: 'center',
@@ -141,6 +267,7 @@ const styles = StyleSheet.create({
   },
   form: {
     marginBottom: 40,
+    width: '100%',
   },
   input: {
     borderWidth: 1,

@@ -150,7 +150,7 @@ const AdminDashboardScreen = () => {
       <ScrollView style={styles.content}>
         <View style={styles.welcomeCard}>
           <Text style={styles.welcomeText}>
-            Welcome back, {user?.email || 'Admin'}!
+            Welcome back, {user?.name || user?.email || 'Admin'}!
           </Text>
           <Text style={styles.roleText}>Role: {userRole}</Text>
         </View>

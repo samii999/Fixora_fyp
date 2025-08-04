@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, SafeAreaView, ActivityIndicator } from 'react-native';
 import { db, auth } from '../../config/firebaseConfig';
-import { doc, setDoc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, setDoc, getDoc, collection, query, where, getDocs, updateDoc } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
 
 const AssignPermissionsScreen = () => {
@@ -44,6 +44,10 @@ const AssignPermissionsScreen = () => {
 
   const handleApprove = async (requestId, staffUid) => {
     try {
+      // Get admin's organization ID
+      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      const adminOrgId = userDoc.data()?.organizationId;
+
       // Update staff request status
       await setDoc(doc(db, 'staff_requests', requestId), {
         status: 'approved',
@@ -54,7 +58,8 @@ const AssignPermissionsScreen = () => {
       // Update user role and organization
       await setDoc(doc(db, 'users', staffUid), {
         role: 'staff',
-        organizationId: user.organizationId,
+        organizationId: adminOrgId,
+        status: 'active',
         permissions: {
           viewIssues: true,
           updateIssues: false,
@@ -63,9 +68,19 @@ const AssignPermissionsScreen = () => {
         }
       }, { merge: true });
 
+      // Update organization document - add to staffIds array
+      const orgRef = doc(db, 'organizations', adminOrgId);
+      const orgDoc = await getDoc(orgRef);
+      if (orgDoc.exists()) {
+        const orgData = orgDoc.data();
+        const updatedStaffIds = [...(orgData.staffIds || []), staffUid];
+        await updateDoc(orgRef, { staffIds: updatedStaffIds });
+      }
+
       Alert.alert('Success', 'Staff member approved successfully!');
       fetchStaffRequests(); // Refresh the list
     } catch (error) {
+      console.error('Approve staff error:', error);
       Alert.alert('Error', 'Failed to approve staff member.');
     }
   };
@@ -87,6 +102,7 @@ const AssignPermissionsScreen = () => {
             Alert.alert('Success', 'Staff request rejected.');
             fetchStaffRequests(); // Refresh the list
           } catch (error) {
+            console.error('Reject staff error:', error);
             Alert.alert('Error', 'Failed to reject request.');
           }
         }
@@ -126,6 +142,9 @@ const AssignPermissionsScreen = () => {
                 <Text style={styles.requestDate}>
                   {new Date(request.createdAt?.seconds * 1000).toLocaleDateString()}
                 </Text>
+                {request.position && (
+                  <Text style={styles.requestPosition}>Position: {request.position}</Text>
+                )}
               </View>
               
               <View style={styles.actionButtons}>
@@ -226,6 +245,12 @@ const styles = StyleSheet.create({
   requestDate: {
     fontSize: 14,
     color: '#666',
+    marginBottom: 4,
+  },
+  requestPosition: {
+    fontSize: 14,
+    color: '#007AFF',
+    fontStyle: 'italic',
   },
   actionButtons: {
     flexDirection: 'row',

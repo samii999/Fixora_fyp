@@ -9,8 +9,10 @@ const RoleSelectionScreen = () => {
 
   const handleRoleSelect = (role) => {
     setSelectedRole(role);
+    // Convert to lowercase for consistency
+    const roleLower = role.toLowerCase();
     // Go directly to login page with the selected role
-    navigation.navigate('Login', { role });
+    navigation.navigate('Login', { role: roleLower });
   };
 
   return (

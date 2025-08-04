@@ -21,7 +21,7 @@ const HomeScreen = () => {
       <ScrollView style={styles.content}>
         <View style={styles.welcomeSection}>
           <Text style={styles.welcomeText}>
-            Welcome back, {user?.displayName || 'User'}!
+            Welcome back, {user?.name || user?.email || 'User'}!
           </Text>
           <Text style={styles.roleText}>Role: {userRole}</Text>
         </View>

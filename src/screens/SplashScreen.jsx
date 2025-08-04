@@ -1,12 +1,22 @@
 import React from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, ActivityIndicator, Image, Dimensions } from 'react-native';
+
+const { width, height } = Dimensions.get('window');
 
 const SplashScreen = () => {
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Fixora</Text>
-      <Text style={styles.subtitle}>Issue Management System</Text>
-      <ActivityIndicator size="large" color="#007AFF" style={styles.loader} />
+      {/* Full Screen Logo */}
+      <Image 
+        source={require('../../assets/icon.png')} 
+        style={styles.fullScreenLogo}
+        resizeMode="contain"
+      />
+      
+      {/* Loading Indicator at bottom */}
+      <View style={styles.loaderContainer}>
+        <ActivityIndicator size="large" color="#007AFF" />
+      </View>
     </View>
   );
 };
@@ -14,23 +24,19 @@ const SplashScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#FFFFFF',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
   },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#007AFF',
-    marginBottom: 8,
+  fullScreenLogo: {
+    width: width,
+    height: height,
+    position: 'absolute',
   },
-  subtitle: {
-    fontSize: 16,
-    color: '#8E8E93',
-    marginBottom: 40,
-  },
-  loader: {
-    marginTop: 20,
+  loaderContainer: {
+    position: 'absolute',
+    bottom: 100,
+    alignItems: 'center',
   },
 });
 

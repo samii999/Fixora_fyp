@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, Button, Image, StyleSheet, ActivityIndicator, Alert, TouchableOpacity, Dimensions, ScrollView } from 'react-native';
+import { View, Text, TextInput, Button, Image, StyleSheet, ActivityIndicator, Alert, TouchableOpacity, Dimensions, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import MapView, { Marker } from 'react-native-maps';
 import { uploadToSupabase } from '../../api/supabase';
@@ -7,11 +7,13 @@ import { getAddressFromCoords, getCoordsFromAddress } from '../../api/nominatim'
 import { db } from '../../config/firebaseConfig';
 import { addDoc, collection, getDoc, doc } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
+import { useNavigation } from '@react-navigation/native';
 
 const { width, height } = Dimensions.get('window');
 
 const ReportForm = ({ userId }) => {
   const { user } = useAuth();
+  const navigation = useNavigation();
   const [image, setImage] = useState(null);
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('');
@@ -27,21 +29,92 @@ const ReportForm = ({ userId }) => {
     longitudeDelta: 0.01,
   });
 
-  // Pick Image
-  const pickImage = async () => {
+  // Pick Image from Gallery
+  const pickImageFromGallery = async () => {
     try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaType.Images,
-        quality: 0.6,
-        allowsEditing: true,
-      });
+      // Request permissions first
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      
+      if (status !== 'granted') {
+        Alert.alert(
+          'Permission Required', 
+          'Sorry, we need camera roll permissions to select images for your report.'
+        );
+        return;
+      }
 
-      if (!result.canceled) {
+             const result = await ImagePicker.launchImageLibraryAsync({
+         mediaTypes: ImagePicker.MediaTypeOptions.Images,
+         quality: 0.6,
+         allowsEditing: true,
+         aspect: [4, 3],
+       });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
         setImage(result.assets[0]);
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to pick image. Please try again.');
+      console.error('Image picker error:', error);
+      Alert.alert(
+        'Error', 
+        `Failed to pick image: ${error.message || 'Unknown error'}. Please try again.`
+      );
     }
+  };
+
+  // Take Photo with Camera
+  const takePhoto = async () => {
+    try {
+      // Request camera permissions first
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      
+      if (status !== 'granted') {
+        Alert.alert(
+          'Permission Required', 
+          'Sorry, we need camera permissions to take photos for your report.'
+        );
+        return;
+      }
+
+             const result = await ImagePicker.launchCameraAsync({
+         mediaTypes: ImagePicker.MediaTypeOptions.Images,
+         quality: 0.6,
+         allowsEditing: true,
+         aspect: [4, 3],
+       });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setImage(result.assets[0]);
+      }
+    } catch (error) {
+      console.error('Camera error:', error);
+      Alert.alert(
+        'Error', 
+        `Failed to take photo: ${error.message || 'Unknown error'}. Please try again.`
+      );
+    }
+  };
+
+  // Show image picker options
+  const showImagePickerOptions = () => {
+    Alert.alert(
+      'Select Image',
+      'Choose how you want to add an image',
+      [
+        {
+          text: 'Camera',
+          onPress: takePhoto,
+        },
+        {
+          text: 'Gallery',
+          onPress: pickImageFromGallery,
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+      ]
+    );
   };
 
   // Search for address and set location
@@ -87,7 +160,23 @@ const ReportForm = ({ userId }) => {
     return `RPT_${Date.now()}`;
   };
 
-  // Get user's organization ID
+  // Get organization ID based on category
+  const getOrganizationByCategory = (selectedCategory) => {
+    const categoryToOrgMap = {
+      'Water Leakage': 'org_wasa',
+      'Drainage Problem': 'org_wasa',
+      'Electricity Issue': 'org_lesco',
+      'Street Light': 'org_lesco',
+      'Road Damage': 'org_highways',
+      'Traffic Signal': 'org_traffic',
+      'Garbage Collection': 'org_sanitation',
+      'Other': 'org_general'
+    };
+    
+    return categoryToOrgMap[selectedCategory] || 'org_general';
+  };
+
+  // Get user's organization ID (for staff users)
   const getUserOrganization = async () => {
     try {
       const userDoc = await getDoc(doc(db, 'users', user.uid));
@@ -130,8 +219,8 @@ const ReportForm = ({ userId }) => {
       // Upload image to Supabase
       const imageUrl = await uploadToSupabase(image.uri, 'reports');
       
-      // Get user's organization
-      const organizationId = await getUserOrganization();
+      // Get organization based on category
+      const organizationId = getOrganizationByCategory(category.trim());
       
       // Create report data matching database structure
       const reportData = {
@@ -153,13 +242,28 @@ const ReportForm = ({ userId }) => {
 
       await addDoc(collection(db, 'reports'), reportData);
       
-      Alert.alert('Success', 'Report submitted successfully!');
-      setImage(null);
-      setDescription('');
-      setCategory('');
-      setLocation(null);
-      setAddress('');
-      setSearchAddress('');
+      Alert.alert(
+        'Success', 
+        'Report submitted successfully!',
+        [
+          {
+            text: 'View My Reports',
+            onPress: () => navigation.navigate('MyReports'),
+          },
+          {
+            text: 'Submit Another',
+            style: 'cancel',
+            onPress: () => {
+              setImage(null);
+              setDescription('');
+              setCategory('');
+              setLocation(null);
+              setAddress('');
+              setSearchAddress('');
+            },
+          },
+        ]
+      );
     } catch (err) {
       console.error('Submit error:', err);
       Alert.alert('Error', 'Failed to submit report. Please try again.');
@@ -180,8 +284,13 @@ const ReportForm = ({ userId }) => {
   ];
 
   return (
-    <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-      <View style={styles.container}>
+    <KeyboardAvoidingView 
+      style={styles.keyboardAvoidingView}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+    >
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        <View style={styles.container}>
         <Text style={styles.label}>Issue Category *</Text>
         <View style={styles.categoryContainer}>
           {categories.map((cat) => (
@@ -211,11 +320,12 @@ const ReportForm = ({ userId }) => {
           value={description}
           onChangeText={setDescription}
           maxLength={500}
+          returnKeyType="next"
         />
         <Text style={styles.charCount}>{description.length}/500</Text>
 
-        <TouchableOpacity style={styles.imageButton} onPress={pickImage}>
-          <Text style={styles.imageButtonText}>📷 Pick Image *</Text>
+        <TouchableOpacity style={styles.imageButton} onPress={showImagePickerOptions}>
+          <Text style={styles.imageButtonText}>📷 Add Image *</Text>
         </TouchableOpacity>
         
         {image && (
@@ -240,6 +350,7 @@ const ReportForm = ({ userId }) => {
             placeholder="Search address or location..."
             value={searchAddress}
             onChangeText={setSearchAddress}
+            returnKeyType="search"
           />
           <TouchableOpacity 
             style={styles.searchButton} 
@@ -293,11 +404,15 @@ const ReportForm = ({ userId }) => {
           </TouchableOpacity>
         )}
       </View>
-    </ScrollView>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
 
 const styles = StyleSheet.create({
+  keyboardAvoidingView: {
+    flex: 1,
+  },
   scrollView: {
     flex: 1,
   },

@@ -16,7 +16,9 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [userRole, setUserRole] = useState(null);
+  const [userStatus, setUserStatus] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [roleDetermined, setRoleDetermined] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -25,20 +27,44 @@ export const AuthProvider = ({ children }) => {
         try {
           const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
           if (userDoc.exists()) {
-            const role = userDoc.data().role;
-            setUserRole(role);
+            const userData = userDoc.data();
+            const role = userData.role;
+            const status = userData.status;
+            
+            // Set status first
+            setUserStatus(status);
+            
+            // For staff users, check if they're approved
+            if (role === 'staff' && status === 'pending') {
+              // Staff is pending approval, don't set role yet
+              setUserRole(null);
+            } else {
+              setUserRole(role);
+            }
+            
+            // Mark that role determination is complete
+            setRoleDetermined(true);
+            setLoading(false);
           } else {
             setUserRole(null);
+            setUserStatus(null);
+            setRoleDetermined(true);
+            setLoading(false);
           }
         } catch (error) {
           console.error('Error fetching user role:', error);
           setUserRole(null);
+          setUserStatus(null);
+          setRoleDetermined(true);
+          setLoading(false);
         }
       } else {
         setUser(null);
         setUserRole(null);
+        setUserStatus(null);
+        setRoleDetermined(true);
+        setLoading(false);
       }
-      setLoading(false);
     });
 
     return unsubscribe;
@@ -47,11 +73,14 @@ export const AuthProvider = ({ children }) => {
   const value = {
     user,
     userRole,
+    userStatus,
     loading,
+    roleDetermined,
     isAuthenticated: !!user,
     isAdmin: userRole === 'admin',
     isStaff: userRole === 'staff',
     isUser: userRole === 'user',
+    isPendingStaff: !userRole && userStatus === 'pending',
   };
 
   return (
