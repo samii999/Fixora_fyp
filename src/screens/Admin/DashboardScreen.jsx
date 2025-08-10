@@ -4,6 +4,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../../context/AuthContext';
 import { db } from '../../config/firebaseConfig';
 import { collection, query, where, getDocs, getDoc, doc } from 'firebase/firestore';
+import BlueHeader from '../../components/layout/Header';
 
 const AdminDashboardScreen = () => {
   const navigation = useNavigation();
@@ -142,10 +143,7 @@ const AdminDashboardScreen = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Admin Dashboard</Text>
-        <Text style={styles.subtitle}>Manage your organization</Text>
-      </View>
+      <BlueHeader title="Admin Dashboard" subtitle="Manage your organization" />
       
       <ScrollView style={styles.content}>
         <View style={styles.welcomeCard}>

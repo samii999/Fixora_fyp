@@ -70,6 +70,13 @@ const StaffHomeScreen = () => {
       >
         <Text style={styles.cardText}>📋 View Assigned Reports</Text>
       </TouchableOpacity>
+
+      <TouchableOpacity 
+        style={styles.card}
+        onPress={() => navigation.navigate('StaffMapView')}
+      >
+        <Text style={styles.cardText}>🗺️ Map View</Text>
+      </TouchableOpacity>
     </View>
   );
 };

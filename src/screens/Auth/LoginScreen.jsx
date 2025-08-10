@@ -1,8 +1,20 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, SafeAreaView, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  SafeAreaView,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform
+} from 'react-native';
 import { validateEmail, validatePassword } from '../../utils/validators';
 import { loginUser, getUserRole } from '../../api/firebase';
 import { useRoute } from '@react-navigation/native';
+import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Path } from 'react-native-svg';
 
 const LoginScreen = ({ navigation }) => {
   const [email, setEmail] = useState('');
@@ -20,7 +32,7 @@ const LoginScreen = ({ navigation }) => {
 
     setLoading(true);
     setError('');
-    
+
     try {
       if (!validateEmail(email)) {
         setError('Please enter a valid email');
@@ -32,15 +44,13 @@ const LoginScreen = ({ navigation }) => {
       }
 
       const user = await loginUser(email, password);
-      
-      // Check if user's role matches the selected role
+
       const userRole = await getUserRole(user.uid);
       if (role && userRole !== role.toLowerCase()) {
         setError(`This account is registered as ${userRole}, not ${role.toLowerCase()}`);
         return;
       }
-      
-      // Navigation will be handled by AuthContext automatically
+
     } catch (err) {
       setError(err.message);
     } finally {
@@ -54,26 +64,36 @@ const LoginScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView 
+      <KeyboardAvoidingView
         style={styles.keyboardAvoidingView}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
-        <ScrollView 
+        <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
+          {/* Top Blue Shape */}
+          <View style={{ position: 'absolute', top: 0, width: '100%' }}>
+            <Svg height="200" width="100%" viewBox="0 0 1440 320">
+              <Path
+                fill="#3B82F6"
+                d="M0,128L60,144C120,160,240,192,360,181.3C480,171,600,117,720,96C840,75,960,85,1080,106.7C1200,128,1320,160,1380,176L1440,192L1440,0L1380,0C1320,0,1200,0,1080,0C960,0,840,0,720,0C600,0,480,0,360,0C240,0,120,0,60,0L0,0Z"
+              />
+            </Svg>
+          </View>
+
           <View style={styles.content}>
             <View style={styles.header}>
-              <Text style={styles.title}>Welcome Back</Text>
+              <Text style={styles.title}>Log In</Text>
               <Text style={styles.subtitle}>Sign in to your {role || 'User'} account</Text>
             </View>
 
             <View style={styles.form}>
               <TextInput
                 style={styles.input}
-                placeholder="Email"
+                placeholder="Email or phone number"
+                placeholderTextColor="#A0AEC0"
                 value={email}
                 onChangeText={setEmail}
                 autoCapitalize="none"
@@ -85,6 +105,7 @@ const LoginScreen = ({ navigation }) => {
               <TextInput
                 style={styles.input}
                 placeholder="Password"
+                placeholderTextColor="#A0AEC0"
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry
@@ -94,14 +115,20 @@ const LoginScreen = ({ navigation }) => {
 
               {error ? <Text style={styles.error}>{error}</Text> : null}
 
-              <TouchableOpacity 
-                style={[styles.loginButton, loading && styles.buttonDisabled]} 
+              <TouchableOpacity
                 onPress={handleLogin}
                 disabled={loading}
               >
-                <Text style={styles.loginButtonText}>
-                  {loading ? 'Signing In...' : 'Sign In'}
-                </Text>
+                <LinearGradient
+                  colors={['#3B82F6', '#1E3A8A']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={[styles.loginButton, loading && styles.buttonDisabled]}
+                >
+                  <Text style={styles.loginButtonText}>
+                    {loading ? 'Signing In...' : 'Log In'}
+                  </Text>
+                </LinearGradient>
               </TouchableOpacity>
             </View>
 
@@ -121,20 +148,19 @@ const LoginScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#0F172A', // Dark navy background
   },
   keyboardAvoidingView: {
     flex: 1,
   },
   scrollContent: {
     flexGrow: 1,
-    paddingBottom: 40, // Add extra padding at bottom for keyboard
+    paddingBottom: 40,
   },
   content: {
     flex: 1,
     padding: 20,
-    justifyContent: 'center',
-    minHeight: '100%', // Ensure content takes full height
+    paddingTop: 160, // space for top curve
   },
   header: {
     alignItems: 'center',
@@ -143,12 +169,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#333',
+    color: '#fff',
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,
-    color: '#666',
+    color: '#CBD5E1',
     textAlign: 'center',
   },
   form: {
@@ -156,29 +182,27 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   input: {
-    borderWidth: 1,
-    borderColor: '#E1E5E9',
+    borderWidth: 0,
     padding: 16,
     borderRadius: 12,
     marginBottom: 16,
     fontSize: 16,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: '#1E293B', // Dark input
+    color: '#fff',
   },
   loginButton: {
-    backgroundColor: '#007AFF',
     padding: 16,
     borderRadius: 12,
     alignItems: 'center',
     marginTop: 8,
-    shadowColor: '#007AFF',
+    shadowColor: '#3B82F6',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 4,
   },
   buttonDisabled: {
-    backgroundColor: '#ccc',
-    shadowOpacity: 0,
+    opacity: 0.6,
   },
   loginButtonText: {
     color: '#fff',
@@ -186,7 +210,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   error: {
-    color: '#FF3B30',
+    color: '#F87171',
     marginBottom: 16,
     textAlign: 'center',
     fontSize: 14,
@@ -198,11 +222,11 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   footerText: {
-    color: '#666',
+    color: '#CBD5E1',
     fontSize: 16,
   },
   signupLink: {
-    color: '#007AFF',
+    color: '#3B82F6',
     fontSize: 16,
     fontWeight: '600',
   },

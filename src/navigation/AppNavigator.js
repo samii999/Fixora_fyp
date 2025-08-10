@@ -28,6 +28,7 @@ import AssignPermissionsScreen from '../screens/Admin/AssignPermissionsScreen';
 import AdminReportsScreen from '../screens/Admin/AdminReportsScreen';
 import AdminAnalyticsScreen from '../screens/Admin/AdminAnalyticsScreen';
 import AdminSettingsScreen from '../screens/Admin/AdminSettingsScreen';
+import StaffProvedReportsScreen from '../screens/Admin/StaffProvedReportsScreen';
 
 // Staff Screens
 import StaffProfileScreen from '../screens/Staff/StaffProfileScreen';
@@ -131,6 +132,16 @@ const AdminTabNavigator = () => {
           tabBarLabel: 'Staff',
           tabBarIcon: ({ color, size }) => (
             <Text style={{ color, fontSize: size }}>👥</Text>
+          ),
+        }}
+      />
+      <Tab.Screen 
+        name="StaffProvedReports" 
+        component={StaffProvedReportsScreen}
+        options={{
+          tabBarLabel: 'Staff-Proved',
+          tabBarIcon: ({ color, size }) => (
+            <Text style={{ color, fontSize: size }}>✅</Text>
           ),
         }}
       />
@@ -263,6 +274,7 @@ const AppNavigator = () => {
                 <Stack.Screen name="AdminReports" component={AdminReportsScreen} />
                 <Stack.Screen name="AdminAnalytics" component={AdminAnalyticsScreen} />
                 <Stack.Screen name="AdminSettings" component={AdminSettingsScreen} />
+                {/* Staff-specific screens */}
               </>
             )}
           </>

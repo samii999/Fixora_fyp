@@ -7,12 +7,14 @@ import {
   TouchableOpacity, 
   SafeAreaView, 
   ActivityIndicator,
-  Alert 
+  Alert,
+  Image
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../../context/AuthContext';
 import { db } from '../../config/firebaseConfig';
 import { collection, query, where, getDocs, orderBy, deleteDoc, doc, updateDoc } from 'firebase/firestore';
+import { getCorrectedImageUrl } from '../../utils/imageUrlFixer';
 
 const MyReportsScreen = () => {
   const navigation = useNavigation();
@@ -188,6 +190,17 @@ const MyReportsScreen = () => {
       <Text style={styles.reportDescription} numberOfLines={2}>
         {item.description || 'No description provided'}
       </Text>
+      
+      {/* Display first image if available */}
+      {(item.imageUrls || item.imageUrl) && (
+        <View style={styles.imageContainer}>
+          <Image
+            source={{ uri: getCorrectedImageUrl(item.imageUrls ? item.imageUrls[0] : item.imageUrl) }}
+            style={styles.reportImage}
+            resizeMode="cover"
+          />
+        </View>
+      )}
       
       <View style={styles.reportMeta}>
         <Text style={styles.reportDate}>
@@ -418,6 +431,16 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#007AFF',
     fontWeight: '500',
+  },
+  imageContainer: {
+    marginVertical: 8,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  reportImage: {
+    width: '100%',
+    height: 120,
+    borderRadius: 8,
   },
   assignedInfo: {
     marginTop: 8,

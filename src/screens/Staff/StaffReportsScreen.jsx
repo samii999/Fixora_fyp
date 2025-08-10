@@ -7,12 +7,16 @@ import {
   TouchableOpacity, 
   SafeAreaView, 
   ActivityIndicator,
-  Alert 
+  Alert,
+  Image
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../../context/AuthContext';
 import { db } from '../../config/firebaseConfig';
 import { collection, query, where, getDocs, updateDoc, doc, orderBy, deleteDoc } from 'firebase/firestore';
+import { getCorrectedImageUrl } from '../../utils/imageUrlFixer';
+import MapView, { Marker, Callout } from 'react-native-maps';
+import BlueHeader from '../../components/layout/Header';
 
 const StaffReportsScreen = () => {
   const navigation = useNavigation();
@@ -146,6 +150,17 @@ const StaffReportsScreen = () => {
         {item.description || 'No description provided'}
       </Text>
       
+      {/* Display first image if available */}
+      {(item.imageUrls || item.imageUrl) && (
+        <View style={styles.imageContainer}>
+          <Image
+            source={{ uri: getCorrectedImageUrl(item.imageUrls ? item.imageUrls[0] : item.imageUrl) }}
+            style={styles.reportImage}
+            resizeMode="cover"
+          />
+        </View>
+      )}
+      
       <View style={styles.reportMeta}>
         <Text style={styles.reportDate}>
           {item.createdAt?.toDate?.()?.toLocaleDateString() || 'Unknown date'}
@@ -168,15 +183,7 @@ const StaffReportsScreen = () => {
             <Text style={styles.actionButtonText}>Start Work</Text>
           </TouchableOpacity>
         )}
-        {item.status === 'in_progress' && (
-          <TouchableOpacity 
-            style={[styles.actionButton, { backgroundColor: '#28A745' }]}
-            onPress={() => handleStatusUpdate(item.id, 'resolved')}
-          >
-            <Text style={styles.actionButtonText}>Mark Resolved</Text>
-          </TouchableOpacity>
-        )}
-                 {/* Staff cannot delete reports - only admins can delete */}
+        {/* No resolve button for staff */}
       </View>
     </TouchableOpacity>
   );
@@ -194,10 +201,7 @@ const StaffReportsScreen = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Assigned Reports</Text>
-        <Text style={styles.subtitle}>Manage your assigned issues</Text>
-      </View>
+      <BlueHeader title="Assigned Reports" subtitle="Manage your assigned issues" />
 
       {/* Filter Tabs */}
       <View style={styles.filterContainer}>
@@ -243,24 +247,26 @@ const StaffReportsScreen = () => {
          </TouchableOpacity>
        </View>
 
-      <FlatList
-        data={filteredReports}
-        renderItem={renderReportItem}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContainer}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No reports assigned</Text>
-            <Text style={styles.emptySubtext}>
-              {filter === 'all' 
-                ? 'You don\'t have any assigned reports yet'
-                : `No ${filter} reports found`
-              }
-            </Text>
-          </View>
-        }
-      />
+      <View style={{ flex: 1 }}>
+        <FlatList
+          data={filteredReports}
+          renderItem={renderReportItem}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContainer}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>No reports assigned</Text>
+              <Text style={styles.emptySubtext}>
+                {filter === 'all' 
+                  ? 'You don\'t have any assigned reports yet'
+                  : `No ${filter} reports found`
+                }
+              </Text>
+            </View>
+          }
+        />
+      </View>
     </SafeAreaView>
   );
 };
@@ -382,6 +388,16 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#007AFF',
     fontWeight: '500',
+  },
+  imageContainer: {
+    marginVertical: 8,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  reportImage: {
+    width: '100%',
+    height: 120,
+    borderRadius: 8,
   },
   reportAddress: {
     fontSize: 12,

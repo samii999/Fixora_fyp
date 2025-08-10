@@ -7,19 +7,23 @@ import {
   TouchableOpacity, 
   SafeAreaView, 
   ActivityIndicator,
-  Alert 
+  Alert,
+  Image
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../../context/AuthContext';
 import { db } from '../../config/firebaseConfig';
 import { collection, query, where, getDocs, getDoc, updateDoc, doc, deleteDoc } from 'firebase/firestore';
+import { getCorrectedImageUrl } from '../../utils/imageUrlFixer';
+import MapView, { Marker, Callout } from 'react-native-maps';
+import BlueHeader from '../../components/layout/Header';
 
 const AdminReportsScreen = () => {
   const navigation = useNavigation();
   const { user } = useAuth();
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('all'); // all, pending, resolved
+  const [filter, setFilter] = useState('all'); // all, pending, needs_review, resolved
   const [availableStaff, setAvailableStaff] = useState([]);
   const [showStaffAssignment, setShowStaffAssignment] = useState(false);
   const [selectedReport, setSelectedReport] = useState(null);
@@ -221,6 +225,9 @@ const AdminReportsScreen = () => {
 
   const filteredReports = reports.filter(report => {
     if (filter === 'all') return true;
+    if (filter === 'needs_review') {
+      return Array.isArray(report.proofImages) && report.proofImages.length > 0 && report.status !== 'resolved';
+    }
     return report.status === filter;
   });
 
@@ -241,6 +248,17 @@ const AdminReportsScreen = () => {
       <Text style={styles.reportDescription} numberOfLines={2}>
         {item.description || 'No description provided'}
       </Text>
+      
+      {/* Display first image if available */}
+      {(item.imageUrls || item.imageUrl) && (
+        <View style={styles.imageContainer}>
+          <Image
+            source={{ uri: getCorrectedImageUrl(item.imageUrls ? item.imageUrls[0] : item.imageUrl) }}
+            style={styles.reportImage}
+            resizeMode="cover"
+          />
+        </View>
+      )}
       
       <View style={styles.reportMeta}>
         <Text style={styles.reportDate}>
@@ -318,10 +336,7 @@ const AdminReportsScreen = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Issue Reports</Text>
-        <Text style={styles.subtitle}>Manage organization reports</Text>
-      </View>
+      <BlueHeader title="Issue Reports" subtitle="Manage organization reports" />
 
              {/* Filter Tabs */}
        <View style={styles.filterContainer}>
@@ -342,6 +357,14 @@ const AdminReportsScreen = () => {
            </Text>
          </TouchableOpacity>
          <TouchableOpacity 
+           style={[styles.filterTab, filter === 'needs_review' && styles.activeFilterTab]}
+           onPress={() => setFilter('needs_review')}
+         >
+           <Text style={[styles.filterText, filter === 'needs_review' && styles.activeFilterText]}>
+             Staff-Proved Reports ({reports.filter(r => Array.isArray(r.proofImages) && r.proofImages.length > 0 && r.status !== 'resolved').length})
+           </Text>
+         </TouchableOpacity>
+         <TouchableOpacity 
            style={[styles.filterTab, filter === 'resolved' && styles.activeFilterTab]}
            onPress={() => setFilter('resolved')}
          >
@@ -359,24 +382,26 @@ const AdminReportsScreen = () => {
          </TouchableOpacity>
        </View>
 
-      <FlatList
-        data={filteredReports}
-        renderItem={renderReportItem}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContainer}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No reports found</Text>
-            <Text style={styles.emptySubtext}>
-              {filter === 'all' 
-                ? 'No reports have been submitted yet'
-                : `No ${filter} reports found`
-              }
-            </Text>
-          </View>
-        }
-      />
+      <View style={{ flex: 1 }}>
+        <FlatList
+          data={filteredReports}
+          renderItem={renderReportItem}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContainer}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>No reports found</Text>
+              <Text style={styles.emptySubtext}>
+                {filter === 'all' 
+                  ? 'No reports have been submitted yet'
+                  : `No ${filter} reports found`
+                }
+              </Text>
+            </View>
+          }
+        />
+      </View>
 
       {/* Staff Assignment Modal */}
       {showStaffAssignment && selectedReport && (
@@ -535,6 +560,16 @@ const styles = StyleSheet.create({
   reportCategory: {
     fontSize: 12,
     color: '#999',
+  },
+  imageContainer: {
+    marginVertical: 8,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  reportImage: {
+    width: '100%',
+    height: 120,
+    borderRadius: 8,
   },
   actionButtons: {
     flexDirection: 'row',

@@ -14,7 +14,7 @@ const { width, height } = Dimensions.get('window');
 const ReportForm = ({ userId }) => {
   const { user } = useAuth();
   const navigation = useNavigation();
-  const [image, setImage] = useState(null);
+  const [images, setImages] = useState([]);
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('');
   const [location, setLocation] = useState(null);
@@ -43,15 +43,15 @@ const ReportForm = ({ userId }) => {
         return;
       }
 
-             const result = await ImagePicker.launchImageLibraryAsync({
-         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-         quality: 0.6,
-         allowsEditing: true,
-         aspect: [4, 3],
-       });
+                   const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.6,
+        allowsEditing: true,
+        aspect: [4, 3],
+      });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        setImage(result.assets[0]);
+        setImages(prevImages => [...prevImages, result.assets[0]]);
       }
     } catch (error) {
       console.error('Image picker error:', error);
@@ -76,15 +76,15 @@ const ReportForm = ({ userId }) => {
         return;
       }
 
-             const result = await ImagePicker.launchCameraAsync({
-         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-         quality: 0.6,
-         allowsEditing: true,
-         aspect: [4, 3],
-       });
+                   const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.6,
+        allowsEditing: true,
+        aspect: [4, 3],
+      });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        setImage(result.assets[0]);
+        setImages(prevImages => [...prevImages, result.assets[0]]);
       }
     } catch (error) {
       console.error('Camera error:', error);
@@ -189,8 +189,8 @@ const ReportForm = ({ userId }) => {
 
   // Submit Report
   const handleSubmit = async () => {
-    if (!image) {
-      Alert.alert('Missing Image', 'Please select an image of the issue.');
+    if (images.length === 0) {
+      Alert.alert('Missing Image', 'Please select at least one image of the issue.');
       return;
     }
 
@@ -216,8 +216,13 @@ const ReportForm = ({ userId }) => {
 
     setLoading(true);
     try {
-      // Upload image to Supabase
-      const imageUrl = await uploadToSupabase(image.uri, 'reports');
+      // Upload all images to Supabase
+      const imageUrls = await Promise.all(
+        images.map(async (image, index) => {
+          console.log(`Uploading image ${index + 1}:`, image.uri);
+          return await uploadToSupabase(image.uri, 'reports');
+        })
+      );
       
       // Get organization based on category
       const organizationId = getOrganizationByCategory(category.trim());
@@ -228,7 +233,8 @@ const ReportForm = ({ userId }) => {
         reportId: generateReportId(),
         category: category.trim(),
         description: description.trim(),
-        imageUrl,
+        imageUrls, // Array of image URLs
+        imageUrl: imageUrls[0], // Keep first image as main image for backward compatibility
         location: {
           latitude: location.latitude,
           longitude: location.longitude
@@ -239,6 +245,8 @@ const ReportForm = ({ userId }) => {
         status: 'pending',
         createdAt: new Date(),
       };
+
+      console.log('Storing report with image URLs:', imageUrls);
 
       await addDoc(collection(db, 'reports'), reportData);
       
@@ -254,7 +262,7 @@ const ReportForm = ({ userId }) => {
             text: 'Submit Another',
             style: 'cancel',
             onPress: () => {
-              setImage(null);
+              setImages([]);
               setDescription('');
               setCategory('');
               setLocation(null);
@@ -289,7 +297,12 @@ const ReportForm = ({ userId }) => {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
     >
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.scrollView} 
+        showsVerticalScrollIndicator={true}
+        contentContainerStyle={{ ...styles.scrollContent, paddingBottom: 140 }}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.container}>
         <Text style={styles.label}>Issue Category *</Text>
         <View style={styles.categoryContainer}>
@@ -325,18 +338,23 @@ const ReportForm = ({ userId }) => {
         <Text style={styles.charCount}>{description.length}/500</Text>
 
         <TouchableOpacity style={styles.imageButton} onPress={showImagePickerOptions}>
-          <Text style={styles.imageButtonText}>📷 Add Image *</Text>
+          <Text style={styles.imageButtonText}>📷 Add Images * ({images.length})</Text>
         </TouchableOpacity>
         
-        {image && (
-          <View style={styles.imageContainer}>
-            <Image source={{ uri: image.uri }} style={styles.image} />
-            <TouchableOpacity 
-              style={styles.removeButton}
-              onPress={() => setImage(null)}
-            >
-              <Text style={styles.removeButtonText}>✕ Remove</Text>
-            </TouchableOpacity>
+        {images.length > 0 && (
+          <View style={styles.imagesContainer}>
+            <Text style={styles.imagesLabel}>📷 Selected Images ({images.length})</Text>
+            {images.map((image, index) => (
+              <View key={index} style={styles.imageContainer}>
+                <Image source={{ uri: image.uri }} style={styles.image} />
+                <TouchableOpacity 
+                  style={styles.removeButton}
+                  onPress={() => setImages(prevImages => prevImages.filter((_, i) => i !== index))}
+                >
+                  <Text style={styles.removeButtonText}>✕ Remove</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
           </View>
         )}
 
@@ -395,10 +413,11 @@ const ReportForm = ({ userId }) => {
           <TouchableOpacity 
             style={[
               styles.submitButton, 
-              (!image || !description.trim() || !location || !category.trim()) && styles.submitButtonDisabled
+              (images.length === 0 || !description.trim() || !location || !category.trim()) && styles.submitButtonDisabled
             ]} 
             onPress={handleSubmit}
-            disabled={!image || !description.trim() || !location || !category.trim() || loading}
+            disabled={images.length === 0 || !description.trim() || !location || !category.trim() || loading}
+            activeOpacity={0.8}
           >
             <Text style={styles.submitButtonText}>Submit Report</Text>
           </TouchableOpacity>
@@ -416,10 +435,12 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
   },
+  scrollContent: {
+    flexGrow: 1,
+  },
   container: { 
     gap: 12, 
     padding: 16,
-    paddingBottom: 40, // Add extra padding at bottom for submit button
   },
   label: { 
     fontSize: 16, 
@@ -477,6 +498,15 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600'
+  },
+  imagesContainer: {
+    gap: 10,
+  },
+  imagesLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 5,
   },
   imageContainer: {
     position: 'relative'
@@ -541,18 +571,29 @@ const styles = StyleSheet.create({
   },
   submitButton: {
     backgroundColor: '#007AFF',
-    padding: 16,
-    borderRadius: 8,
+    padding: 18,
+    borderRadius: 12,
     alignItems: 'center',
-    marginTop: 10
+    marginTop: 20,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   submitButtonDisabled: {
-    backgroundColor: '#ccc'
+    backgroundColor: '#ccc',
+    shadowOpacity: 0,
+    elevation: 0,
   },
   submitButtonText: {
     color: '#fff',
-    fontSize: 16,
-    fontWeight: '600'
+    fontSize: 18,
+    fontWeight: '700'
   }
 });
 
