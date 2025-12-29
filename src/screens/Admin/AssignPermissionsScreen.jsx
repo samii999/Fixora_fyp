@@ -1,17 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, SafeAreaView, ActivityIndicator } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { db, auth } from '../../config/firebaseConfig';
 import { doc, setDoc, getDoc, collection, query, where, getDocs, updateDoc } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
+import BlueHeader from '../../components/layout/Header';
 
 const AssignPermissionsScreen = () => {
   const [staffRequests, setStaffRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
 
-  useEffect(() => {
-    fetchStaffRequests();
-  }, []);
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchStaffRequests();
+    }, [])
+  );
 
   const fetchStaffRequests = async () => {
     try {
@@ -85,7 +89,7 @@ const AssignPermissionsScreen = () => {
     }
   };
 
-  const handleReject = async (requestId) => {
+  const handleReject = async (requestId, staffUid) => {
     Alert.alert('Confirm Rejection', 'Reject this staff request?', [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -93,10 +97,16 @@ const AssignPermissionsScreen = () => {
         style: 'destructive',
         onPress: async () => {
           try {
+            // Update staff request status
             await setDoc(doc(db, 'staff_requests', requestId), {
               status: 'rejected',
               rejectedAt: new Date(),
               rejectedBy: user.uid
+            }, { merge: true });
+            
+            // Also update the user document status
+            await setDoc(doc(db, 'users', staffUid), {
+              status: 'rejected'
             }, { merge: true });
             
             Alert.alert('Success', 'Staff request rejected.');
@@ -123,10 +133,7 @@ const AssignPermissionsScreen = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Staff Requests</Text>
-        <Text style={styles.subtitle}>{staffRequests.length} pending request(s)</Text>
-      </View>
+      <BlueHeader title="Approve Staff Requests" subtitle={`${staffRequests.length} pending request(s)`} />
       
       {staffRequests.length === 0 ? (
         <View style={styles.emptyContainer}>
@@ -138,13 +145,14 @@ const AssignPermissionsScreen = () => {
           {staffRequests.map((request) => (
             <View key={request.id} style={styles.requestCard}>
               <View style={styles.requestHeader}>
+                <Text style={styles.requestName}>{request.name || 'No Name'}</Text>
                 <Text style={styles.requestEmail}>{request.email}</Text>
-                <Text style={styles.requestDate}>
-                  {new Date(request.createdAt?.seconds * 1000).toLocaleDateString()}
-                </Text>
                 {request.position && (
                   <Text style={styles.requestPosition}>Position: {request.position}</Text>
                 )}
+                <Text style={styles.requestDate}>
+                  Requested: {new Date(request.createdAt?.seconds * 1000).toLocaleDateString()}
+                </Text>
               </View>
               
               <View style={styles.actionButtons}>
@@ -157,7 +165,7 @@ const AssignPermissionsScreen = () => {
                 
                 <TouchableOpacity 
                   style={styles.rejectButton}
-                  onPress={() => handleReject(request.id)}
+                  onPress={() => handleReject(request.id, request.uid)}
                 >
                   <Text style={styles.rejectButtonText}>Reject</Text>
                 </TouchableOpacity>
@@ -176,22 +184,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F8F9FA',
-  },
-  header: {
-    padding: 20,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E1E5E9',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#666',
-    marginTop: 4,
   },
   loadingContainer: {
     flex: 1,
@@ -236,21 +228,28 @@ const styles = StyleSheet.create({
   requestHeader: {
     marginBottom: 16,
   },
-  requestEmail: {
-    fontSize: 18,
-    fontWeight: '600',
+  requestName: {
+    fontSize: 20,
+    fontWeight: 'bold',
     color: '#333',
-    marginBottom: 4,
+    marginBottom: 8,
+  },
+  requestEmail: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#007AFF',
+    marginBottom: 8,
   },
   requestDate: {
     fontSize: 14,
     color: '#666',
+    marginTop: 4,
     marginBottom: 4,
   },
   requestPosition: {
     fontSize: 14,
-    color: '#007AFF',
-    fontStyle: 'italic',
+    color: '#666',
+    marginBottom: 4,
   },
   actionButtons: {
     flexDirection: 'row',

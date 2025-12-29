@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,17 +7,20 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
-  SafeAreaView
+  SafeAreaView,
+  Image
 } from 'react-native';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '../../config/firebaseConfig';
 import { doc, getDoc } from 'firebase/firestore';
 import { useAuth } from '../../context/AuthContext';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 
 const UserProfileScreen = () => {
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
   const { user, userRole } = useAuth();
+  const navigation = useNavigation();
 
   const fetchUserData = async () => {
     try {
@@ -39,6 +42,13 @@ const UserProfileScreen = () => {
   useEffect(() => {
     fetchUserData();
   }, []);
+
+  // Refetch user data when screen comes into focus (e.g., returning from settings)
+  useFocusEffect(
+    useCallback(() => {
+      fetchUserData();
+    }, [])
+  );
 
   const handleLogout = () => {
     Alert.alert(
@@ -68,22 +78,42 @@ const UserProfileScreen = () => {
   const handleSettingPress = (setting) => {
     switch (setting) {
       case 'account':
-        Alert.alert('Account Settings', 'Account settings feature coming soon!');
+        // Admin uses AdminAccountSettings, regular users use AccountSettings
+        if (userRole === 'admin') {
+          navigation.navigate('AdminAccountSettings');
+        } else {
+          navigation.navigate('AccountSettings');
+        }
         break;
       case 'notifications':
-        Alert.alert('Notifications', 'Notification settings feature coming soon!');
+        if (userRole === 'admin') {
+          navigation.navigate('AdminNotificationSettings');
+        } else {
+          navigation.navigate('NotificationSettings');
+        }
         break;
       case 'privacy':
-        Alert.alert('Privacy', 'Privacy settings feature coming soon!');
+        if (userRole === 'admin') {
+          navigation.navigate('AdminPrivacySecurity');
+        } else {
+          navigation.navigate('PrivacySecurity');
+        }
         break;
       case 'organization':
-        Alert.alert('Organization Settings', 'Organization management feature coming soon!');
+        navigation.navigate('OrganizationSettings');
         break;
       case 'permissions':
-        Alert.alert('Manage Permissions', 'Permission management feature coming soon!');
+        navigation.navigate('AssignPermissions');
+        break;
+      case 'feedback':
+        navigation.navigate('FeedbackDashboard');
         break;
       case 'help':
-        Alert.alert('Help & Support', 'Help and support feature coming soon!');
+        if (userRole === 'admin') {
+          navigation.navigate('AdminHelpSupport');
+        } else {
+          navigation.navigate('HelpSupport');
+        }
         break;
       case 'about':
         Alert.alert('About', 'Fixora v1.0.0\nIssue Management System');
@@ -114,15 +144,27 @@ const UserProfileScreen = () => {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.scrollView}>
+    <View style={styles.container}>
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Profile Header */}
         <View style={styles.profileHeader}>
-          <View style={styles.avatarContainer}>
-            <Text style={styles.avatarText}>
-              {userData.email?.charAt(0).toUpperCase() || 'U'}
-            </Text>
-          </View>
+          {userData.profileImage ? (
+            <Image
+              source={{ uri: userData.profileImage }}
+              style={styles.profileImage}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={styles.avatarContainer}>
+              <Text style={styles.avatarText}>
+                {userData.email?.charAt(0).toUpperCase() || 'U'}
+              </Text>
+            </View>
+          )}
           <Text style={styles.userName}>{userData.email}</Text>
           <Text style={styles.userRole}>
             {userRole === 'admin' ? 'Administrator' : 
@@ -187,8 +229,19 @@ const UserProfileScreen = () => {
                 onPress={() => handleSettingPress('permissions')}
               >
                 <View style={styles.settingLeft}>
-                  <Text style={styles.settingIcon}>⚙️</Text>
+                  <Text style={styles.settingIcon}>👥</Text>
                   <Text style={styles.settingText}>Manage Permissions</Text>
+                </View>
+                <Text style={styles.chevron}>›</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.settingItem} 
+                onPress={() => handleSettingPress('feedback')}
+              >
+                <View style={styles.settingLeft}>
+                  <Text style={styles.settingIcon}>⭐</Text>
+                  <Text style={styles.settingText}>Feedback & Ratings</Text>
                 </View>
                 <Text style={styles.chevron}>›</Text>
               </TouchableOpacity>
@@ -228,7 +281,7 @@ const UserProfileScreen = () => {
           <Text style={styles.logoutText}>Logout</Text>
         </TouchableOpacity>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 };
 
@@ -237,10 +290,14 @@ export default UserProfileScreen;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: '#F5F7FA',
+    paddingTop: 40,
   },
   scrollView: {
     flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 30,
   },
   loadingContainer: {
     flex: 1,
@@ -249,91 +306,156 @@ const styles = StyleSheet.create({
   },
   profileHeader: {
     backgroundColor: '#FFFFFF',
-    padding: 24,
+    paddingTop: 20,
+    paddingBottom: 30,
+    paddingHorizontal: 20,
     alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E1E5E9',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  profileImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    marginBottom: 20,
+    borderWidth: 3,
+    borderColor: '#007AFF',
+    shadowColor: '#007AFF',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
   avatarContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     backgroundColor: '#007AFF',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 20,
+    shadowColor: '#007AFF',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
   avatarText: {
-    fontSize: 32,
+    fontSize: 36,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
   userName: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#333333',
-    marginBottom: 4,
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#1A1A1A',
+    marginBottom: 6,
+    textAlign: 'center',
+    paddingHorizontal: 20,
   },
   userRole: {
     fontSize: 16,
-    color: '#666666',
+    color: '#6B7280',
+    textAlign: 'center',
+    paddingHorizontal: 20,
+    backgroundColor: '#E5E7EB',
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    overflow: 'hidden',
   },
   settingsSection: {
     backgroundColor: '#FFFFFF',
     marginTop: 20,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: '#E1E5E9',
+    marginHorizontal: 20,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+    overflow: 'hidden',
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#666666',
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#374151',
     paddingHorizontal: 20,
-    paddingVertical: 12,
-    backgroundColor: '#F8F9FA',
+    paddingVertical: 16,
+    backgroundColor: '#F9FAFB',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
   },
   settingItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingVertical: 18,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: '#F3F4F6',
   },
   settingLeft: {
     flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
   },
   settingIcon: {
-    fontSize: 20,
-    marginRight: 12,
+    fontSize: 22,
+    marginRight: 16,
+    width: 24,
+    textAlign: 'center',
   },
   settingText: {
     fontSize: 16,
-    color: '#333333',
+    color: '#374151',
+    fontWeight: '500',
+    flex: 1,
   },
   chevron: {
-    fontSize: 18,
-    color: '#C7C7CC',
+    fontSize: 20,
+    color: '#9CA3AF',
+    fontWeight: '300',
   },
   logoutButton: {
-    backgroundColor: '#FF3B30',
+    backgroundColor: '#EF4444',
     marginHorizontal: 20,
     marginTop: 30,
-    marginBottom: 40,
-    paddingVertical: 16,
-    borderRadius: 12,
+    marginBottom: 20,
+    paddingVertical: 18,
+    borderRadius: 16,
     alignItems: 'center',
+    shadowColor: '#EF4444',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
   logoutText: {
     color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   errorText: {
-    color: '#FF3B30',
+    color: '#EF4444',
     fontSize: 16,
   },
 });

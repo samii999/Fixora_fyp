@@ -1,0 +1,28 @@
+⚠️ BEFORE RUNNING "npm start" - UPDATE YOUR NGROK URL HERE:
+================================================================
+
+📁 FILE LOCATION:
+src/config/apiConfig.js
+
+🔧 WHAT TO CHANGE:
+Find this line (around line 18):
+    PREDICTION_API_URL: 'https://your-ngrok-url-here.ngrok-free.app',
+
+Replace with your actual ngrok URL from Colab:
+    PREDICTION_API_URL: 'https://xxxx-xx-xxx-xxx-xxx.ngrok-free.app',
+
+💡 HOW TO GET YOUR NGROK URL:
+1. Run your Colab notebook with the prediction model
+2. Copy the ngrok URL from the Colab output
+3. Paste it in src/config/apiConfig.js
+4. Save the file
+5. NOW you can run: npm start
+
+⚠️ REMEMBER:
+- ngrok URL changes every time you restart Colab
+- Update this file each session
+- Don't include /predict at the end (that's added automatically)
+
+📝 EXAMPLE:
+If Colab shows: https://1a2b-34-56-78-90.ngrok-free.app
+Then put: PREDICTION_API_URL: 'https://1a2b-34-56-78-90.ngrok-free.app',

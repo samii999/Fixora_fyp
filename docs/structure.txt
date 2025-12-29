@@ -1,0 +1,57 @@
+fixora/
+│
+├── App.js                       # Main application component
+├── app.json                     # Expo configuration
+├── package.json                 # Project dependencies
+├── package-lock.json            # Lock file for dependencies
+├── babel.config.js              # Babel configuration
+├── database structure.txt        # Database schema documentation
+├── structure.txt                # This file - project structure documentation
+│
+├── assets/                      # Static assets
+│   ├── adaptive-icon.png        # Android adaptive icon
+│   ├── favicon.png              # Browser favicon
+│   ├── icon.png                 # App icon
+│   ├── splash-icon.png          # Splash screen icon
+│   ├── images/                  # Image assets
+│   ├── icons/                   # Icon assets
+│   │   └── logo.png             # Application logo
+│   └── fonts/                   # Custom fonts
+│
+├── node_modules/                # Installed dependencies
+│
+└── src/                         # Source code
+    │
+    ├── screens/                 # Application screens
+    │   ├── Auth/                # Authentication related screens
+    │   │   └── SignupScreen.jsx
+    │   │
+    │   ├── Main/                # Main app screens
+    │   │   ├── HomeScreen.jsx
+    │   │   ├── ReportIssueScreen.jsx
+    │   │   ├── IssueDetailScreen.jsx
+    │   │   ├── MyReportsScreen.jsx
+    │   │   └── ProfileScreen.jsx
+    │   │
+    │   ├── Staff/               # Staff specific screens
+    │   │   ├── homescreen.jsx
+    │   │   ├── JoinOrganizationScreen.jsx
+    │   │   ├── StaffProfileScreen.jsx
+    │   │   ├── StaffReportsScreen.jsx
+    │   │   └── StatusScreen.jsx
+    │   │
+    │   └── SplashScreen.jsx     # Initial loading screen
+    │
+    ├── services/                # Service layer
+    │   ├── authService.js       # Authentication service
+    │   ├── issueService.js      # Issue management service
+    │   ├── navigationService.js # Navigation service
+    │   └── notificationService.js # Push notification service
+    │
+    ├── styles/                  # Global styles
+    │   └── globalStyles.js      # Global style definitions
+    │
+    └── utils/                   # Utility functions
+        ├── helpers.js           # Helper functions
+        ├── validators.js        # Form validation utilities
+        └── imageUrlFixer.js     # Image URL utilities

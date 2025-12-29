@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -10,10 +10,14 @@ import {
   KeyboardAvoidingView,
   Platform
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { validateEmail, validatePassword } from '../../utils/validators';
 import { loginUser, getUserRole } from '../../api/firebase';
+import { signInWithEmailAndPassword, sendEmailVerification, signOut } from 'firebase/auth';
+import { auth } from '../../config/firebaseConfig';
 import { useRoute } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Path } from 'react-native-svg';
 
 const LoginScreen = ({ navigation }) => {
@@ -21,17 +25,34 @@ const LoginScreen = ({ navigation }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [canResend, setCanResend] = useState(false);
+  const [infoMessage, setInfoMessage] = useState('');
   const route = useRoute();
   const { role } = route.params || {};
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const v = await AsyncStorage.getItem('showVerifyMsgOnLogin');
+        if (v === 'true') {
+          setInfoMessage('We sent a verification link to your email. After verifying, please log in.');
+          await AsyncStorage.removeItem('showVerifyMsgOnLogin');
+        }
+      } catch {}
+    })();
+  }, []);
 
   const handleLogin = async () => {
     if (!email || !password) {
       setError('Please fill all fields');
+      setLoading(false);
       return;
     }
 
     setLoading(true);
     setError('');
+    setCanResend(false);
 
     try {
       if (!validateEmail(email)) {
@@ -53,8 +74,31 @@ const LoginScreen = ({ navigation }) => {
 
     } catch (err) {
       setError(err.message);
+      if (String(err.message || '').toLowerCase().includes('verify')) {
+        setCanResend(true);
+      }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    if (!email || !password) {
+      setError('Enter your email and password to resend verification.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const cred = await signInWithEmailAndPassword(auth, email, password);
+      await sendEmailVerification(cred.user);
+      await signOut(auth);
+      setError('We re-sent the verification email. Check your inbox/spam.');
+      setCanResend(false);
+    } catch (err) {
+      setError(err.message || 'Could not resend verification email.');
+    } finally {
+      setLoading(false);
+      setCanResend(false);
     }
   };
 
@@ -63,25 +107,26 @@ const LoginScreen = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <KeyboardAvoidingView
         style={styles.keyboardAvoidingView}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
+        {/* Top Blue Shape - Outside ScrollView */}
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 1 }}>
+          <Svg height="250" width="100%" viewBox="0 0 1440 320" preserveAspectRatio="none">
+            <Path
+              fill="#3B82F6"
+              d="M0,128L60,144C120,160,240,192,360,181.3C480,171,600,117,720,96C840,75,960,85,1080,106.7C1200,128,1320,160,1380,176L1440,192L1440,0L1380,0C1320,0,1200,0,1080,0C960,0,840,0,720,0C600,0,480,0,360,0C240,0,120,0,60,0L0,0Z"
+            />
+          </Svg>
+        </View>
+        
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Top Blue Shape */}
-          <View style={{ position: 'absolute', top: 0, width: '100%' }}>
-            <Svg height="200" width="100%" viewBox="0 0 1440 320">
-              <Path
-                fill="#3B82F6"
-                d="M0,128L60,144C120,160,240,192,360,181.3C480,171,600,117,720,96C840,75,960,85,1080,106.7C1200,128,1320,160,1380,176L1440,192L1440,0L1380,0C1320,0,1200,0,1080,0C960,0,840,0,720,0C600,0,480,0,360,0C240,0,120,0,60,0L0,0Z"
-              />
-            </Svg>
-          </View>
 
           <View style={styles.content}>
             <View style={styles.header}>
@@ -102,18 +147,36 @@ const LoginScreen = ({ navigation }) => {
                 returnKeyType="next"
               />
 
-              <TextInput
-                style={styles.input}
-                placeholder="Password"
-                placeholderTextColor="#A0AEC0"
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-                autoComplete="password"
-                returnKeyType="done"
-              />
+              <View style={styles.passwordContainer}>
+                <TextInput
+                  style={styles.passwordInput}
+                  placeholder="Password"
+                  placeholderTextColor="#A0AEC0"
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!showPassword}
+                  autoComplete="password"
+                  returnKeyType="done"
+                />
+                <TouchableOpacity
+                  style={styles.eyeButton}
+                  onPress={() => setShowPassword(!showPassword)}
+                >
+                  <Ionicons
+                    name={showPassword ? "eye" : "eye-off"}
+                    size={20}
+                    color="#A0AEC0"
+                  />
+                </TouchableOpacity>
+              </View>
 
+              {infoMessage ? <Text style={styles.info}>{infoMessage}</Text> : null}
               {error ? <Text style={styles.error}>{error}</Text> : null}
+              {canResend ? (
+                <TouchableOpacity onPress={handleResendVerification} disabled={loading} style={styles.resendButton}>
+                  <Text style={styles.resendText}>{loading ? 'Resending...' : 'Resend verification email'}</Text>
+                </TouchableOpacity>
+              ) : null}
 
               <TouchableOpacity
                 onPress={handleLogin}
@@ -141,7 +204,7 @@ const LoginScreen = ({ navigation }) => {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
 };
 
@@ -160,7 +223,7 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: 20,
-    paddingTop: 160, // space for top curve
+    paddingTop: 200, // space for top curve
   },
   header: {
     alignItems: 'center',
@@ -190,6 +253,23 @@ const styles = StyleSheet.create({
     backgroundColor: '#1E293B', // Dark input
     color: '#fff',
   },
+  passwordContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1E293B',
+    borderRadius: 12,
+    marginBottom: 16,
+    paddingRight: 12,
+  },
+  passwordInput: {
+    flex: 1,
+    padding: 16,
+    fontSize: 16,
+    color: '#fff',
+  },
+  eyeButton: {
+    padding: 8,
+  },
   loginButton: {
     padding: 16,
     borderRadius: 12,
@@ -212,6 +292,12 @@ const styles = StyleSheet.create({
   error: {
     color: '#F87171',
     marginBottom: 16,
+    textAlign: 'center',
+    fontSize: 14,
+  },
+  info: {
+    color: '#93C5FD',
+    marginBottom: 12,
     textAlign: 'center',
     fontSize: 14,
   },

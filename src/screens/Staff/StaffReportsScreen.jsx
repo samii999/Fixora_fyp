@@ -2,21 +2,23 @@ import React, { useState, useEffect } from 'react';
 import { 
   View, 
   Text, 
-  StyleSheet, 
   FlatList, 
   TouchableOpacity, 
+  StyleSheet, 
   SafeAreaView, 
   ActivityIndicator,
   Alert,
-  Image
+  Image,
+  ScrollView
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../../context/AuthContext';
 import { db } from '../../config/firebaseConfig';
-import { collection, query, where, getDocs, updateDoc, doc, orderBy, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, updateDoc, doc, orderBy, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { getCorrectedImageUrl } from '../../utils/imageUrlFixer';
 import MapView, { Marker, Callout } from 'react-native-maps';
 import BlueHeader from '../../components/layout/Header';
+import { sortReportsByUrgency, getUrgencyDisplay, getUrgencyColor } from '../../utils/reportSorting';
 
 const StaffReportsScreen = () => {
   const navigation = useNavigation();
@@ -26,41 +28,59 @@ const StaffReportsScreen = () => {
   const [filter, setFilter] = useState('all'); // all, assigned, in_progress, resolved
 
   useEffect(() => {
-    fetchAssignedReports();
-  }, []);
-
-  const fetchAssignedReports = async () => {
-    try {
-      setLoading(true);
-      
-      // Fetch all reports and filter in JavaScript to avoid index issues
-      const reportsQuery = query(collection(db, 'reports'));
-      const snapshot = await getDocs(reportsQuery);
-      const allReports = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      
-      // Filter reports assigned to this staff member
-      const assignedReports = allReports.filter(report => 
-        report.organizationAssigned === user.uid
-      );
-      
-      // Sort by createdAt in JavaScript
-      assignedReports.sort((a, b) => {
-        const dateA = a.createdAt?.toDate?.() || new Date(0);
-        const dateB = b.createdAt?.toDate?.() || new Date(0);
-        return dateB - dateA;
-      });
-      
-      setReports(assignedReports);
-    } catch (error) {
-      console.error('Error fetching assigned reports:', error);
-      Alert.alert('Error', 'Failed to load assigned reports');
-    } finally {
-      setLoading(false);
-    }
-  };
+    let unsubscribe = null;
+    
+    const setupListener = () => {
+      try {
+        setLoading(true);
+        
+        // Set up real-time listener for all reports
+        const reportsQuery = query(collection(db, 'reports'));
+        
+        unsubscribe = onSnapshot(
+          reportsQuery,
+          (snapshot) => {
+            const allReports = snapshot.docs.map(doc => ({
+              id: doc.id,
+              ...doc.data()
+            }));
+            
+            // Filter reports assigned to this staff member
+            const assignedReports = allReports.filter(report => {
+              // Support both new multi-staff assignment and old single assignment
+              if (report.assignedStaffIds && Array.isArray(report.assignedStaffIds)) {
+                return report.assignedStaffIds.includes(user.uid);
+              }
+              // Fallback to old single assignment for backwards compatibility
+              return report.organizationAssigned === user.uid;
+            });
+            
+            // Sort by urgency (High → Medium → Low), then by date
+            const sortedReports = sortReportsByUrgency(assignedReports);
+            
+            setReports(sortedReports);
+            setLoading(false);
+          },
+          (error) => {
+            console.error('Error fetching assigned reports:', error);
+            Alert.alert('Error', 'Failed to load assigned reports');
+            setLoading(false);
+          }
+        );
+      } catch (error) {
+        console.error('Error setting up reports listener:', error);
+        setLoading(false);
+      }
+    };
+    
+    setupListener();
+    
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
+  }, [user.uid]);
 
   const handleStatusUpdate = async (reportId, newStatus) => {
     try {
@@ -141,14 +161,33 @@ const StaffReportsScreen = () => {
         <Text style={styles.reportTitle}>
           {item.category || 'Issue Report'}
         </Text>
-        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
-          <Text style={styles.statusText}>{getStatusText(item.status)}</Text>
+        <View style={styles.badgesContainer}>
+          <View style={[styles.urgencyBadge, { backgroundColor: getUrgencyColor(item.urgency || item.predictionMetadata?.urgency || 'Medium') }]}>
+            <Text style={styles.urgencyText}>{getUrgencyDisplay(item.urgency || item.predictionMetadata?.urgency || 'Medium')}</Text>
+          </View>
+          <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
+            <Text style={styles.statusText}>{getStatusText(item.status)}</Text>
+          </View>
         </View>
       </View>
       
       <Text style={styles.reportDescription} numberOfLines={2}>
         {item.description || 'No description provided'}
       </Text>
+      
+      {/* Display assigned staff members if multiple */}
+      {item.assignedStaff && item.assignedStaff.length > 1 && (
+        <View style={styles.teamContainer}>
+          <Text style={styles.teamLabel}>Team Members:</Text>
+          <View style={styles.teamList}>
+            {item.assignedStaff.map((staff, index) => (
+              <View key={staff.uid} style={styles.teamChip}>
+                <Text style={styles.teamChipText}>{staff.name}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
       
       {/* Display first image if available */}
       {(item.imageUrls || item.imageUrl) && (
@@ -183,7 +222,20 @@ const StaffReportsScreen = () => {
             <Text style={styles.actionButtonText}>Start Work</Text>
           </TouchableOpacity>
         )}
-        {/* No resolve button for staff */}
+        {item.status === 'in_progress' && (
+          <TouchableOpacity 
+            style={[styles.actionButton, { backgroundColor: '#28A745' }]}
+            onPress={() => navigation.navigate('IssueDetail', { issueId: item.id })}
+          >
+            <Text style={styles.actionButtonText}>Upload Proof</Text>
+          </TouchableOpacity>
+        )}
+        {/* Show proof status if uploaded */}
+        {item.proofImages && item.proofImages.length > 0 && (
+          <View style={styles.proofBadge}>
+            <Text style={styles.proofBadgeText}>✓ Proof Uploaded</Text>
+          </View>
+        )}
       </View>
     </TouchableOpacity>
   );
@@ -204,12 +256,17 @@ const StaffReportsScreen = () => {
       <BlueHeader title="Assigned Reports" subtitle="Manage your assigned issues" />
 
       {/* Filter Tabs */}
-      <View style={styles.filterContainer}>
+      <ScrollView 
+        horizontal 
+        showsHorizontalScrollIndicator={false}
+        style={styles.filterContainer}
+        contentContainerStyle={styles.filterContentContainer}
+      >
         <TouchableOpacity 
           style={[styles.filterTab, filter === 'all' && styles.activeFilterTab]}
           onPress={() => setFilter('all')}
         >
-          <Text style={[styles.filterText, filter === 'all' && styles.activeFilterText]}>
+          <Text style={[styles.filterText, filter === 'all' && styles.activeFilterText]} numberOfLines={1}>
             All ({reports.length})
           </Text>
         </TouchableOpacity>
@@ -217,7 +274,7 @@ const StaffReportsScreen = () => {
           style={[styles.filterTab, filter === 'assigned' && styles.activeFilterTab]}
           onPress={() => setFilter('assigned')}
         >
-          <Text style={[styles.filterText, filter === 'assigned' && styles.activeFilterText]}>
+          <Text style={[styles.filterText, filter === 'assigned' && styles.activeFilterText]} numberOfLines={1}>
             Assigned ({reports.filter(r => r.status === 'assigned').length})
           </Text>
         </TouchableOpacity>
@@ -225,27 +282,27 @@ const StaffReportsScreen = () => {
           style={[styles.filterTab, filter === 'in_progress' && styles.activeFilterTab]}
           onPress={() => setFilter('in_progress')}
         >
-          <Text style={[styles.filterText, filter === 'in_progress' && styles.activeFilterText]}>
+          <Text style={[styles.filterText, filter === 'in_progress' && styles.activeFilterText]} numberOfLines={1}>
             In Progress ({reports.filter(r => r.status === 'in_progress').length})
           </Text>
         </TouchableOpacity>
-                 <TouchableOpacity 
-           style={[styles.filterTab, filter === 'resolved' && styles.activeFilterTab]}
-           onPress={() => setFilter('resolved')}
-         >
-           <Text style={[styles.filterText, filter === 'resolved' && styles.activeFilterText]}>
-             Resolved ({reports.filter(r => r.status === 'resolved').length})
-           </Text>
-         </TouchableOpacity>
-         <TouchableOpacity 
-           style={[styles.filterTab, filter === 'withdrawn' && styles.activeFilterTab]}
-           onPress={() => setFilter('withdrawn')}
-         >
-           <Text style={[styles.filterText, filter === 'withdrawn' && styles.activeFilterText]}>
-             Withdrawn ({reports.filter(r => r.status === 'withdrawn').length})
-           </Text>
-         </TouchableOpacity>
-       </View>
+        <TouchableOpacity 
+          style={[styles.filterTab, filter === 'resolved' && styles.activeFilterTab]}
+          onPress={() => setFilter('resolved')}
+        >
+          <Text style={[styles.filterText, filter === 'resolved' && styles.activeFilterText]} numberOfLines={1}>
+            Resolved ({reports.filter(r => r.status === 'resolved').length})
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={[styles.filterTab, filter === 'withdrawn' && styles.activeFilterTab]}
+          onPress={() => setFilter('withdrawn')}
+        >
+          <Text style={[styles.filterText, filter === 'withdrawn' && styles.activeFilterText]} numberOfLines={1}>
+            Withdrawn ({reports.filter(r => r.status === 'withdrawn').length})
+          </Text>
+        </TouchableOpacity>
+      </ScrollView>
 
       <View style={{ flex: 1 }}>
         <FlatList
@@ -303,26 +360,31 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   filterContainer: {
-    flexDirection: 'row',
     backgroundColor: '#fff',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
+    maxHeight: 50,
+  },
+  filterContentContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    gap: 8,
+    alignItems: 'center',
   },
   filterTab: {
-    flex: 1,
     paddingVertical: 8,
-    paddingHorizontal: 8,
-    marginHorizontal: 2,
+    paddingHorizontal: 12,
     borderRadius: 16,
     alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 80,
+    backgroundColor: '#F0F0F0',
   },
   activeFilterTab: {
     backgroundColor: '#007AFF',
   },
   filterText: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#666',
   },
   activeFilterText: {
@@ -357,6 +419,21 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#333',
     flex: 1,
+  },
+  badgesContainer: {
+    flexDirection: 'row',
+    gap: 6,
+    alignItems: 'center',
+  },
+  urgencyBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  urgencyText: {
+    fontSize: 11,
+    color: '#fff',
+    fontWeight: '700',
   },
   statusBadge: {
     paddingHorizontal: 8,
@@ -435,6 +512,47 @@ const styles = StyleSheet.create({
     color: '#999',
     textAlign: 'center',
   },
+  teamContainer: {
+    marginVertical: 8,
+    padding: 8,
+    backgroundColor: '#F0F4FF',
+    borderRadius: 8,
+  },
+  teamLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 6,
+  },
+  teamList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  teamChip: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  teamChipText: {
+    fontSize: 12,
+    color: '#fff',
+    fontWeight: '500',
+  },
+  proofBadge: {
+    flex: 1,
+    backgroundColor: '#28A745',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  proofBadgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
 });
 
-export default StaffReportsScreen; 
+export default StaffReportsScreen;

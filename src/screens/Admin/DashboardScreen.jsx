@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, ScrollView, ActivityIndicator } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, ScrollView, ActivityIndicator, Image } from 'react-native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../../context/AuthContext';
 import { db } from '../../config/firebaseConfig';
 import { collection, query, where, getDocs, getDoc, doc } from 'firebase/firestore';
 import BlueHeader from '../../components/layout/Header';
+import { getOrganizationFeedbackStats } from '../../services/feedbackService';
 
 const AdminDashboardScreen = () => {
   const navigation = useNavigation();
@@ -13,13 +14,20 @@ const AdminDashboardScreen = () => {
     totalReports: 0,
     pendingReports: 0,
     totalStaff: 0,
-    pendingRequests: 0
+    pendingRequests: 0,
+    averageRating: 0,
+    totalFeedbacks: 0
   });
   const [loading, setLoading] = useState(true);
+  const [organizationName, setOrganizationName] = useState('');
+  const [organizationLogo, setOrganizationLogo] = useState(null);
 
-  useEffect(() => {
-    fetchDashboardStats();
-  }, []);
+  // Refresh stats whenever screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchDashboardStats();
+    }, [])
+  );
 
   const fetchDashboardStats = async () => {
     try {
@@ -30,6 +38,13 @@ const AdminDashboardScreen = () => {
       const organizationId = userDoc.data()?.organizationId;
 
       if (organizationId) {
+        // Fetch organization name and logo
+        const orgDoc = await getDoc(doc(db, 'organizations', organizationId));
+        if (orgDoc.exists()) {
+          setOrganizationName(orgDoc.data()?.name || '');
+          setOrganizationLogo(orgDoc.data()?.logo || null);
+        }
+        
         // Fetch reports for this organization
         const reportsQuery = query(
           collection(db, 'reports'),
@@ -43,14 +58,17 @@ const AdminDashboardScreen = () => {
           doc => doc.data().status === 'pending'
         ).length;
 
-        // Fetch staff members
+        // Fetch staff members (only active ones)
         const staffQuery = query(
           collection(db, 'users'),
           where('organizationId', '==', organizationId),
           where('role', '==', 'staff')
         );
         const staffSnapshot = await getDocs(staffQuery);
-        const totalStaff = staffSnapshot.size;
+        // Filter out removed staff
+        const totalStaff = staffSnapshot.docs.filter(
+          doc => doc.data().status !== 'removed'
+        ).length;
 
         // Fetch pending staff requests
         const requestsQuery = query(
@@ -61,11 +79,16 @@ const AdminDashboardScreen = () => {
         const requestsSnapshot = await getDocs(requestsQuery);
         const pendingRequests = requestsSnapshot.size;
 
+        // Fetch feedback stats
+        const feedbackStats = await getOrganizationFeedbackStats(organizationId);
+
         setStats({
           totalReports,
           pendingReports,
           totalStaff,
-          pendingRequests
+          pendingRequests,
+          averageRating: feedbackStats.averageRating || 0,
+          totalFeedbacks: feedbackStats.totalFeedbacks || 0
         });
       }
     } catch (error) {
@@ -105,19 +128,12 @@ const AdminDashboardScreen = () => {
       color: '#5856D6'
     },
     {
-      title: 'Analytics',
-      subtitle: 'View organization statistics',
-      icon: '📈',
-      onPress: () => navigation.navigate('AdminAnalytics'),
-      color: '#FF6B6B'
+      title: 'Feedback & Ratings',
+      subtitle: `${stats.averageRating}/5.0 rating from ${stats.totalFeedbacks} reviews`,
+      icon: '⭐',
+      onPress: () => navigation.navigate('FeedbackDashboard'),
+      color: '#FF9500'
     },
-    {
-      title: 'Settings',
-      subtitle: 'Manage organization settings',
-      icon: '⚙️',
-      onPress: () => navigation.navigate('AdminSettings'),
-      color: '#6C5CE7'
-    }
   ];
 
   const quickActions = [
@@ -145,12 +161,26 @@ const AdminDashboardScreen = () => {
     <SafeAreaView style={styles.container}>
       <BlueHeader title="Admin Dashboard" subtitle="Manage your organization" />
       
-      <ScrollView style={styles.content}>
+      <ScrollView style={styles.content} contentContainerStyle={styles.scrollContent}>
         <View style={styles.welcomeCard}>
-          <Text style={styles.welcomeText}>
-            Welcome back, {user?.name || user?.email || 'Admin'}!
-          </Text>
-          <Text style={styles.roleText}>Role: {userRole}</Text>
+          <View style={styles.welcomeHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.welcomeText}>
+                Welcome back, {user?.email || 'Admin'}!
+              </Text>
+              <Text style={styles.roleText}>Role: {userRole}</Text>
+              {organizationName && (
+                <Text style={styles.orgText}>Organization: {organizationName}</Text>
+              )}
+            </View>
+            {organizationLogo && (
+              <Image
+                source={{ uri: organizationLogo }}
+                style={styles.orgLogo}
+                resizeMode="contain"
+              />
+            )}
+          </View>
         </View>
 
         {/* Quick Stats */}
@@ -173,6 +203,14 @@ const AdminDashboardScreen = () => {
               <Text style={styles.statNumber}>{stats.pendingRequests}</Text>
               <Text style={styles.statLabel}>Requests</Text>
             </View>
+            {stats.totalFeedbacks > 0 && (
+              <View style={[styles.statCard, { backgroundColor: '#FFF9E6' }]}>
+                <Text style={[styles.statNumber, { color: '#FF9500' }]}>
+                  {stats.averageRating} ⭐
+                </Text>
+                <Text style={styles.statLabel}>Avg Rating</Text>
+              </View>
+            )}
           </View>
         </View>
 
@@ -209,13 +247,12 @@ const AdminDashboardScreen = () => {
           ))}
         </View>
 
-        <View style={styles.infoCard}>
+        <View style={[styles.infoCard, { marginBottom: 32 }]}>
           <Text style={styles.infoTitle}>Admin Quick Tips:</Text>
           <Text style={styles.infoText}>
             • Create an organization first to get started{'\n'}
             • Approve staff requests to build your team{'\n'}
             • Monitor and manage issue reports{'\n'}
-            • Use analytics to track performance{'\n'}
             • Manage permissions for staff members
           </Text>
         </View>
@@ -251,6 +288,9 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 20,
   },
+  scrollContent: {
+    paddingBottom: 32,
+  },
   welcomeCard: {
     backgroundColor: '#fff',
     padding: 20,
@@ -271,6 +311,24 @@ const styles = StyleSheet.create({
   roleText: {
     fontSize: 14,
     color: '#666',
+  },
+  orgText: {
+    fontSize: 14,
+    color: '#007AFF',
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  welcomeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  orgLogo: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E1E5E9',
   },
   dashboardGrid: {
     marginBottom: 20,

@@ -108,6 +108,22 @@ reports
         ├── status: "pending" (String)
         └── uid: "desoYd3yMdbcMSlWUl7JyAGmWyyM2" (String - User ID who submitted the report)
 
+        Certainly. I can write down the staff request database entry following the exact hierarchical and arrow-based style you have provided for the other documents.
+
+staff_requests
+/ (Root)
+ └── staff_requests (Collection)    
+       └── VL4I38uuHgcmIVNlZyWopggPEKB2 (Document - currently selected in the image)       
+        ├── approvedAt: 2 August 2025 at 13:31:54 UTC+5 (Timestamp/Date-time)      
+        ├── approvedBy: "t3uFVgZCo9cCAEVTKiXKMIwydkB2" (String - Admin ID)        
+        ├── createdAt: 2 August 2025 at 13:30:45 UTC+5 (Timestamp/Date-time)       
+        ├── email: "staff2@gmail.com" (String)     
+        ├── firstName: "Muhammad" (String)       
+        ├── lastName: "Usman" (String)        
+        ├── name: "Muhammad Usman" (String)    
+        ├── organizationId: "org_wasa" (String - Key for linking to organizations)     
+        ├── status: "approved" (String)    
+        └── uid: "VL4I38uuHgcmIVNlZyWopggPEKB2" (String - User ID, matching the Document ID)
 
 supabase bucket name 
 reports where storeimage

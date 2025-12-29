@@ -2,21 +2,29 @@ import React, { useState, useEffect } from 'react';
 import { 
   View, 
   Text, 
-  StyleSheet, 
   FlatList, 
   TouchableOpacity, 
+  StyleSheet, 
   SafeAreaView, 
-  ActivityIndicator,
   Alert,
-  Image
+  Modal,
+  TextInput,
+  ActivityIndicator,
+  Image,
+  Platform,
+  ScrollView
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../../context/AuthContext';
 import { db } from '../../config/firebaseConfig';
-import { collection, query, where, getDocs, getDoc, updateDoc, doc, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, getDoc, updateDoc, doc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { getCorrectedImageUrl } from '../../utils/imageUrlFixer';
 import MapView, { Marker, Callout } from 'react-native-maps';
 import BlueHeader from '../../components/layout/Header';
+import { sortReportsByUrgency, getUrgencyDisplay, getUrgencyColor } from '../../utils/reportSorting';
+import { createFeedbackRequest } from '../../services/feedbackService';
+import { notifyStaffAssignment, notifyUserReportResolved } from '../../services/notificationService';
+import { syncStatusToLinkedUsers } from '../../services/duplicateDetectionService';
 
 const AdminReportsScreen = () => {
   const navigation = useNavigation();
@@ -25,12 +33,67 @@ const AdminReportsScreen = () => {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all'); // all, pending, needs_review, resolved
   const [availableStaff, setAvailableStaff] = useState([]);
+  const [availableTeams, setAvailableTeams] = useState([]);
   const [showStaffAssignment, setShowStaffAssignment] = useState(false);
   const [selectedReport, setSelectedReport] = useState(null);
+  const [adminNote, setAdminNote] = useState('');
+  const [selectedStaffIds, setSelectedStaffIds] = useState([]);
+  const [selectedTeamId, setSelectedTeamId] = useState(null);
+  const [assignmentType, setAssignmentType] = useState('individual'); // 'individual' or 'team'
 
   useEffect(() => {
-    fetchReports();
+    let unsubscribe = null;
+    
+    const setupListener = async () => {
+      try {
+        // Get admin's organization ID first
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        const organizationId = userDoc.data()?.organizationId;
+
+        if (organizationId) {
+          const reportsQuery = query(
+            collection(db, 'reports'),
+            where('organizationId', '==', organizationId)
+          );
+          
+          // Set up real-time listener
+          unsubscribe = onSnapshot(
+            reportsQuery,
+            (snapshot) => {
+              const reportsList = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+              }));
+              
+              // Sort by urgency (High → Medium → Low), then by date
+              const sortedReports = sortReportsByUrgency(reportsList);
+              setReports(sortedReports);
+              setLoading(false);
+            },
+            (error) => {
+              console.error('Error fetching reports:', error);
+              Alert.alert('Error', 'Failed to load reports');
+              setLoading(false);
+            }
+          );
+        } else {
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error('Error setting up reports listener:', error);
+        setLoading(false);
+      }
+    };
+    
+    setupListener();
     fetchAvailableStaff();
+    fetchAvailableTeams();
+    
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
   }, []);
 
   const fetchAvailableStaff = async () => {
@@ -46,16 +109,30 @@ const AdminReportsScreen = () => {
           const orgData = orgDoc.data();
           const staffIds = orgData.staffIds || [];
           
-          // Fetch staff details
+          // Fetch staff details with busy status
           const staffPromises = staffIds.map(async (staffId) => {
             const staffDoc = await getDoc(doc(db, 'users', staffId));
             if (staffDoc.exists()) {
               const staffData = staffDoc.data();
+              
+              // Check if staff has active assignments
+              const reportsQuery = query(collection(db, 'reports'));
+              const reportsSnapshot = await getDocs(reportsQuery);
+              const activeAssignments = reportsSnapshot.docs.filter(doc => {
+                const data = doc.data();
+                return data.assignedStaffIds?.includes(staffId) && 
+                       (data.status === 'assigned' || data.status === 'in_progress');
+              });
+              
               return {
                 uid: staffId,
                 name: staffData.name || staffData.email,
                 email: staffData.email,
-                status: staffData.status
+                status: staffData.status,
+                teamId: staffData.teamId,
+                teamName: staffData.teamName,
+                isBusy: activeAssignments.length > 0,
+                activeAssignments: activeAssignments.length
               };
             }
             return null;
@@ -70,40 +147,65 @@ const AdminReportsScreen = () => {
     }
   };
 
-  const fetchReports = async () => {
+  const fetchAvailableTeams = async () => {
     try {
-      setLoading(true);
-      
-      // Get admin's organization ID
       const userDoc = await getDoc(doc(db, 'users', user.uid));
       const organizationId = userDoc.data()?.organizationId;
 
       if (organizationId) {
-        const reportsQuery = query(
-          collection(db, 'reports'),
+        const teamsQuery = query(
+          collection(db, 'teams'),
           where('organizationId', '==', organizationId)
         );
-        const snapshot = await getDocs(reportsQuery);
-        const reportsList = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        setReports(reportsList);
+        const snapshot = await getDocs(teamsQuery);
+        
+        // Check team busy status
+        const teamsWithStatus = await Promise.all(
+          snapshot.docs.map(async (teamDoc) => {
+            const teamData = teamDoc.data();
+            const activeAssignments = teamData.currentAssignments?.filter(
+              a => a.status === 'assigned' || a.status === 'in_progress'
+            ) || [];
+            
+            return {
+              id: teamDoc.id,
+              ...teamData,
+              isBusy: activeAssignments.length > 0,
+              activeAssignmentCount: activeAssignments.length
+            };
+          })
+        );
+        
+        setAvailableTeams(teamsWithStatus);
       }
     } catch (error) {
-      console.error('Error fetching reports:', error);
-      Alert.alert('Error', 'Failed to load reports');
-    } finally {
-      setLoading(false);
+      console.error('Error fetching teams:', error);
     }
   };
 
   const handleStatusUpdate = async (reportId, newStatus) => {
+    // Prevent admin from marking as resolved without staff proof
+    if (newStatus === 'resolved') {
+      const report = reports.find(r => r.id === reportId);
+      if (!report.proofImages || !Array.isArray(report.proofImages) || report.proofImages.length === 0) {
+        Alert.alert(
+          'Cannot Resolve', 
+          'Staff must upload proof of work before this report can be marked as resolved.'
+        );
+        return;
+      }
+    }
+    
     try {
       await updateDoc(doc(db, 'reports', reportId), {
         status: newStatus,
         updatedAt: new Date(),
         updatedBy: user.uid
+      });
+      
+      // Sync status to linked reports (reports from same users)
+      syncStatusToLinkedUsers(reportId, newStatus).catch(err => {
+        console.error('Failed to sync status to linked reports:', err);
       });
       
       // Update local state
@@ -115,40 +217,198 @@ const AdminReportsScreen = () => {
         )
       );
       
-      Alert.alert('Success', `Report marked as ${newStatus}`);
+      // Create feedback request if marking as resolved
+      if (newStatus === 'resolved') {
+        const report = reports.find(r => r.id === reportId);
+        if (report && report.userId) {
+          console.log('📝 Creating feedback request for resolved report...');
+          const feedbackResult = await createFeedbackRequest(reportId, report.userId, report);
+          
+          // Send notification to user who submitted the report
+          console.log('🔔 Sending notification to user about report resolution...');
+          notifyUserReportResolved(
+            report.userId,
+            reportId,
+            report.category || 'Issue',
+            report.address || 'Unknown location',
+            user.uid  // Pass current user ID (the admin who resolved)
+          ).catch(err => {
+            console.error('Failed to send resolution notification:', err);
+          });
+          
+          if (feedbackResult.success) {
+            console.log('✅ Feedback request created successfully');
+            Alert.alert(
+              'Success', 
+              'Report marked as resolved. User will receive a notification to provide feedback.'
+            );
+          } else {
+            Alert.alert('Success', `Report marked as ${newStatus}`);
+          }
+        } else {
+          Alert.alert('Success', `Report marked as ${newStatus}`);
+        }
+      } else {
+        Alert.alert('Success', `Report marked as ${newStatus}`);
+      }
     } catch (error) {
       console.error('Error updating report status:', error);
       Alert.alert('Error', 'Failed to update report status');
     }
   };
 
-  const handleStaffAssignment = async (reportId, staffId, staffName) => {
+  const toggleStaffSelection = (staffId) => {
+    setSelectedStaffIds(prev => 
+      prev.includes(staffId) 
+        ? prev.filter(id => id !== staffId)
+        : [...prev, staffId]
+    );
+  };
+  
+  const handleTeamSelection = (teamId) => {
+    setSelectedTeamId(teamId);
+  };
+
+  const handleAssignment = async () => {
+    if (assignmentType === 'individual' && selectedStaffIds.length === 0) {
+      Alert.alert('Error', 'Please select at least one staff member');
+      return;
+    }
+    
+    if (assignmentType === 'team' && !selectedTeamId) {
+      Alert.alert('Error', 'Please select a team');
+      return;
+    }
+
     try {
-      await updateDoc(doc(db, 'reports', reportId), {
-        organizationAssigned: staffId,
-        assignedTo: staffName,
+      let assignmentData = {
         assignedAt: new Date(),
         assignedBy: user.uid,
-        status: 'assigned'
-      });
+        status: 'assigned',
+        assignmentType: assignmentType
+      };
+      
+      if (assignmentType === 'individual') {
+        // Check if any selected staff is busy
+        const busyStaff = availableStaff.filter(
+          staff => selectedStaffIds.includes(staff.uid) && staff.isBusy
+        );
+        
+        if (busyStaff.length > 0) {
+          const busyNames = busyStaff.map(s => s.name).join(', ');
+          const shouldContinue = await new Promise((resolve) => {
+            Alert.alert(
+              'Staff Already Busy',
+              `${busyNames} ${busyStaff.length === 1 ? 'is' : 'are'} already assigned to other work. Do you want to assign this work anyway?`,
+              [
+                { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+                { text: 'Assign Anyway', onPress: () => resolve(true) }
+              ]
+            );
+          });
+          
+          if (!shouldContinue) return;
+        }
+        
+        const assignedStaffList = availableStaff
+          .filter(staff => selectedStaffIds.includes(staff.uid))
+          .map(staff => ({
+            uid: staff.uid,
+            name: staff.name,
+            email: staff.email
+          }));
+
+        assignmentData = {
+          ...assignmentData,
+          assignedStaff: assignedStaffList,
+          assignedStaffIds: selectedStaffIds,
+          assignedTo: assignedStaffList.map(s => s.name).join(', ')
+        };
+      } else if (assignmentType === 'team') {
+        const selectedTeam = availableTeams.find(t => t.id === selectedTeamId);
+        
+        // Check if team is busy
+        if (selectedTeam.isBusy) {
+          const shouldContinue = await new Promise((resolve) => {
+            Alert.alert(
+              'Team Already Busy',
+              `${selectedTeam.name} is already assigned to ${selectedTeam.activeAssignmentCount} active work(s). Do you want to assign this work anyway?`,
+              [
+                { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+                { text: 'Choose Another Team', onPress: () => resolve(false) },
+                { text: 'Assign Anyway', onPress: () => resolve(true) }
+              ]
+            );
+          });
+          
+          if (!shouldContinue) return;
+        }
+        
+        assignmentData = {
+          ...assignmentData,
+          assignedTeamId: selectedTeamId,
+          assignedTeamName: selectedTeam.name,
+          assignedTo: `Team: ${selectedTeam.name}`,
+          assignedStaffIds: selectedTeam.members?.map(m => m.uid) || []
+        };
+        
+        // Update team's current assignments
+        const teamRef = doc(db, 'teams', selectedTeamId);
+        const currentAssignments = selectedTeam.currentAssignments || [];
+        await updateDoc(teamRef, {
+          currentAssignments: [...currentAssignments, {
+            reportId: selectedReport.id,
+            assignedAt: new Date(),
+            status: 'assigned'
+          }],
+          isAvailable: false
+        });
+      }
+      
+      // Add admin note if provided
+      if (adminNote.trim()) {
+        assignmentData.adminNote = adminNote.trim();
+      }
+      
+      await updateDoc(doc(db, 'reports', selectedReport.id), assignmentData);
       
       // Update local state
       setReports(prevReports => 
         prevReports.map(report => 
-          report.id === reportId 
-            ? { 
-                ...report, 
-                organizationAssigned: staffId,
-                assignedTo: staffName,
-                status: 'assigned'
-              }
+          report.id === selectedReport.id 
+            ? { ...report, ...assignmentData }
             : report
         )
       );
       
       setShowStaffAssignment(false);
       setSelectedReport(null);
-      Alert.alert('Success', `Report assigned to ${staffName}`);
+      setAdminNote('');
+      setSelectedStaffIds([]);
+      setSelectedTeamId(null);
+      setAssignmentType('individual');
+      
+      // Refresh data
+      fetchAvailableStaff();
+      fetchAvailableTeams();
+      
+      const assignedTo = assignmentType === 'individual' 
+        ? `${selectedStaffIds.length} staff member(s)`
+        : availableTeams.find(t => t.id === selectedTeamId)?.name;
+      
+      // Send notification to assigned staff
+      console.log('🔔 Sending notification to assigned staff...');
+      notifyStaffAssignment(
+        selectedReport.id,
+        assignmentData.assignedStaffIds,
+        selectedReport.category || 'Issue',
+        selectedReport.address || 'Unknown location',
+        user.uid  // Pass current user ID (the admin who assigned)
+      ).catch(err => {
+        console.error('Failed to send staff notification:', err);
+      });
+      
+      Alert.alert('Success', `Report assigned to ${assignedTo}`);
     } catch (error) {
       console.error('Error assigning report:', error);
       Alert.alert('Error', 'Failed to assign report');
@@ -240,14 +500,65 @@ const AdminReportsScreen = () => {
         <Text style={styles.reportTitle}>
           {item.title || 'Issue Report'}
         </Text>
-        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
-          <Text style={styles.statusText}>{getStatusText(item.status)}</Text>
+        <View style={styles.badgesContainer}>
+          <View style={[styles.urgencyBadge, { backgroundColor: getUrgencyColor(item.urgency || item.predictionMetadata?.urgency || 'Medium') }]}>
+            <Text style={styles.urgencyText}>{getUrgencyDisplay(item.urgency || item.predictionMetadata?.urgency || 'Medium')}</Text>
+          </View>
+          <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
+            <Text style={styles.statusText}>{getStatusText(item.status)}</Text>
+          </View>
+          {item.duplicateCount > 0 && !item.isDuplicate && (
+            <View style={styles.duplicateBadge}>
+              <Text style={styles.duplicateBadgeText}>🔁 +{item.duplicateCount} duplicate{item.duplicateCount > 1 ? 's' : ''}</Text>
+            </View>
+          )}
+          {item.isDuplicate && (
+            <View style={styles.duplicateLinkBadge}>
+              <Text style={styles.duplicateLinkBadgeText}>🔗 Duplicate</Text>
+            </View>
+          )}
+          {item.isResubmission && (
+            <View style={styles.resubmissionBadge}>
+              <Text style={styles.resubmissionBadgeText}>🔄 Resubmitted</Text>
+            </View>
+          )}
         </View>
       </View>
       
       <Text style={styles.reportDescription} numberOfLines={2}>
         {item.description || 'No description provided'}
       </Text>
+      
+      {/* Show multiple reporters if available */}
+      {item.reporterCount && item.reporterCount > 1 && (
+        <View style={styles.multipleReportersNote}>
+          <Text style={styles.multipleReportersText}>
+            👥 {item.reporterCount} people reported this issue
+          </Text>
+        </View>
+      )}
+      
+      {/* Show resubmission reason if available */}
+      {item.isResubmission && item.resubmissionReason && (
+        <View style={styles.resubmissionNote}>
+          <Text style={styles.resubmissionNoteLabel}>⚠️ Resubmission Reason:</Text>
+          <Text style={styles.resubmissionNoteText}>{item.resubmissionReason}</Text>
+        </View>
+      )}
+      
+      {/* Display assigned staff if any */}
+      {item.assignedStaff && item.assignedStaff.length > 0 && (
+        <View style={styles.assignedStaffContainer}>
+          <Text style={styles.assignedStaffLabel}>Assigned to:</Text>
+          <View style={styles.assignedStaffList}>
+            {item.assignedStaff.map((staff, index) => (
+              <View key={staff.uid} style={styles.staffChip}>
+                <Text style={styles.staffChipText}>{staff.name}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
       
       {/* Display first image if available */}
       {(item.imageUrls || item.imageUrl) && (
@@ -339,12 +650,17 @@ const AdminReportsScreen = () => {
       <BlueHeader title="Issue Reports" subtitle="Manage organization reports" />
 
              {/* Filter Tabs */}
-       <View style={styles.filterContainer}>
+       <ScrollView 
+         horizontal 
+         showsHorizontalScrollIndicator={false}
+         style={styles.filterContainer}
+         contentContainerStyle={styles.filterContentContainer}
+       >
          <TouchableOpacity 
            style={[styles.filterTab, filter === 'all' && styles.activeFilterTab]}
            onPress={() => setFilter('all')}
          >
-           <Text style={[styles.filterText, filter === 'all' && styles.activeFilterText]}>
+           <Text style={[styles.filterText, filter === 'all' && styles.activeFilterText]} numberOfLines={1}>
              All ({reports.length})
            </Text>
          </TouchableOpacity>
@@ -352,7 +668,7 @@ const AdminReportsScreen = () => {
            style={[styles.filterTab, filter === 'pending' && styles.activeFilterTab]}
            onPress={() => setFilter('pending')}
          >
-           <Text style={[styles.filterText, filter === 'pending' && styles.activeFilterText]}>
+           <Text style={[styles.filterText, filter === 'pending' && styles.activeFilterText]} numberOfLines={1}>
              Pending ({reports.filter(r => r.status === 'pending').length})
            </Text>
          </TouchableOpacity>
@@ -360,15 +676,15 @@ const AdminReportsScreen = () => {
            style={[styles.filterTab, filter === 'needs_review' && styles.activeFilterTab]}
            onPress={() => setFilter('needs_review')}
          >
-           <Text style={[styles.filterText, filter === 'needs_review' && styles.activeFilterText]}>
-             Staff-Proved Reports ({reports.filter(r => Array.isArray(r.proofImages) && r.proofImages.length > 0 && r.status !== 'resolved').length})
+           <Text style={[styles.filterText, filter === 'needs_review' && styles.activeFilterText]} numberOfLines={1}>
+             Staff-Proved ({reports.filter(r => Array.isArray(r.proofImages) && r.proofImages.length > 0 && r.status !== 'resolved').length})
            </Text>
          </TouchableOpacity>
          <TouchableOpacity 
            style={[styles.filterTab, filter === 'resolved' && styles.activeFilterTab]}
            onPress={() => setFilter('resolved')}
          >
-           <Text style={[styles.filterText, filter === 'resolved' && styles.activeFilterText]}>
+           <Text style={[styles.filterText, filter === 'resolved' && styles.activeFilterText]} numberOfLines={1}>
              Resolved ({reports.filter(r => r.status === 'resolved').length})
            </Text>
          </TouchableOpacity>
@@ -376,11 +692,11 @@ const AdminReportsScreen = () => {
            style={[styles.filterTab, filter === 'withdrawn' && styles.activeFilterTab]}
            onPress={() => setFilter('withdrawn')}
          >
-           <Text style={[styles.filterText, filter === 'withdrawn' && styles.activeFilterText]}>
+           <Text style={[styles.filterText, filter === 'withdrawn' && styles.activeFilterText]} numberOfLines={1}>
              Withdrawn ({reports.filter(r => r.status === 'withdrawn').length})
            </Text>
          </TouchableOpacity>
-       </View>
+       </ScrollView>
 
       <View style={{ flex: 1 }}>
         <FlatList
@@ -407,45 +723,163 @@ const AdminReportsScreen = () => {
       {showStaffAssignment && selectedReport && (
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Assign Report to Staff</Text>
-            <Text style={styles.modalSubtitle}>
-              Select a staff member to assign this report:
-            </Text>
+            <Text style={styles.modalTitle}>Assign Report</Text>
             
-            <FlatList
-              data={availableStaff}
-              keyExtractor={(item) => item.uid}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={styles.staffItem}
-                  onPress={() => handleStaffAssignment(selectedReport.id, item.uid, item.name)}
-                >
-                  <Text style={styles.staffName}>{item.name}</Text>
-                  <Text style={styles.staffEmail}>{item.email}</Text>
-                </TouchableOpacity>
-              )}
-              ListEmptyComponent={
-                <Text style={styles.noStaffText}>No staff members available</Text>
-              }
+            {/* Assignment Type Selector */}
+            <View style={styles.assignmentTypeSelector}>
+              <TouchableOpacity
+                style={[styles.typeButton, assignmentType === 'individual' && styles.activeTypeButton]}
+                onPress={() => setAssignmentType('individual')}
+              >
+                <Text style={[styles.typeButtonText, assignmentType === 'individual' && styles.activeTypeButtonText]}>
+                  👤 Individual Staff
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.typeButton, assignmentType === 'team' && styles.activeTypeButton]}
+                onPress={() => setAssignmentType('team')}
+              >
+                <Text style={[styles.typeButtonText, assignmentType === 'team' && styles.activeTypeButtonText]}>
+                  👥 Team
+                </Text>
+              </TouchableOpacity>
+            </View>
+            
+            {/* Admin Note Input */}
+            <Text style={styles.label}>Admin Note (Optional)</Text>
+            <TextInput
+              style={styles.noteInput}
+              placeholder="Add any special instructions or notes..."
+              multiline
+              numberOfLines={3}
+              value={adminNote}
+              onChangeText={setAdminNote}
+              placeholderTextColor="#999"
             />
             
-            <TouchableOpacity
-              style={styles.cancelButton}
-              onPress={() => {
-                setShowStaffAssignment(false);
-                setSelectedReport(null);
-              }}
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
+            {assignmentType === 'individual' ? (
+              <>
+                <Text style={styles.modalSubtitle}>
+                  Select staff members to assign:
+                </Text>
+                <FlatList
+                  data={availableStaff}
+                  keyExtractor={(item) => item.uid}
+                  renderItem={({ item }) => {
+                    const isSelected = selectedStaffIds.includes(item.uid);
+                    return (
+                      <TouchableOpacity
+                        style={[styles.staffItem, isSelected && styles.selectedStaffItem]}
+                        onPress={() => toggleStaffSelection(item.uid)}
+                      >
+                        <View style={styles.staffInfo}>
+                          <Text style={styles.staffName}>{item.name}</Text>
+                          <Text style={styles.staffEmail}>{item.email}</Text>
+                          {item.teamName && (
+                            <Text style={styles.staffTeam}>Team: {item.teamName}</Text>
+                          )}
+                          {item.isBusy && (
+                            <View style={styles.busyBadge}>
+                              <Text style={styles.busyBadgeText}>⚠️ Busy ({item.activeAssignments} active)</Text>
+                            </View>
+                          )}
+                        </View>
+                        <View style={[styles.checkbox, isSelected && styles.checkedBox]}>
+                          {isSelected && <Text style={styles.checkmark}>✓</Text>}
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  }}
+                  ListEmptyComponent={
+                    <Text style={styles.noStaffText}>No staff members available</Text>
+                  }
+                />
+              </>
+            ) : (
+              <>
+                <Text style={styles.modalSubtitle}>
+                  Select a team to assign:
+                </Text>
+                <FlatList
+                  data={availableTeams}
+                  keyExtractor={(item) => item.id}
+                  renderItem={({ item }) => {
+                    const isSelected = selectedTeamId === item.id;
+                    return (
+                      <TouchableOpacity
+                        style={[styles.staffItem, isSelected && styles.selectedStaffItem]}
+                        onPress={() => handleTeamSelection(item.id)}
+                      >
+                        <View style={styles.staffInfo}>
+                          <Text style={styles.staffName}>{item.name}</Text>
+                          <Text style={styles.staffEmail}>
+                            {item.members?.length || 0} member(s)
+                          </Text>
+                          {item.description && (
+                            <Text style={styles.teamDescriptionSmall}>{item.description}</Text>
+                          )}
+                          {item.isBusy && (
+                            <View style={styles.busyBadge}>
+                              <Text style={styles.busyBadgeText}>
+                                ⚠️ Busy ({item.activeAssignmentCount} active work)
+                              </Text>
+                            </View>
+                          )}
+                          {!item.isBusy && (
+                            <View style={styles.availableBadge}>
+                              <Text style={styles.availableBadgeText}>✅ Available</Text>
+                            </View>
+                          )}
+                        </View>
+                        <View style={[styles.checkbox, isSelected && styles.checkedBox]}>
+                          {isSelected && <Text style={styles.checkmark}>✓</Text>}
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  }}
+                  ListEmptyComponent={
+                    <Text style={styles.noStaffText}>No teams available. Create a team in Manage Staff.</Text>
+                  }
+                />
+              </>
+            )}
+            
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[
+                  styles.assignButton, 
+                  (assignmentType === 'individual' ? selectedStaffIds.length === 0 : !selectedTeamId) && styles.disabledButton
+                ]}
+                onPress={handleAssignment}
+                disabled={assignmentType === 'individual' ? selectedStaffIds.length === 0 : !selectedTeamId}
+              >
+                <Text style={styles.assignButtonText}>
+                  {assignmentType === 'individual' 
+                    ? `Assign to ${selectedStaffIds.length} Staff` 
+                    : 'Assign to Team'}
+                </Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={() => {
+                  setShowStaffAssignment(false);
+                  setSelectedReport(null);
+                  setAdminNote('');
+                  setSelectedStaffIds([]);
+                  setSelectedTeamId(null);
+                  setAssignmentType('individual');
+                }}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       )}
     </SafeAreaView>
   );
 };
-
-export default AdminReportsScreen;
 
 const styles = StyleSheet.create({
   container: {
@@ -479,26 +913,31 @@ const styles = StyleSheet.create({
     color: '#666',
   },
   filterContainer: {
-    flexDirection: 'row',
     backgroundColor: '#fff',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#E1E5E9',
+    maxHeight: 50,
+  },
+  filterContentContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    gap: 8,
+    alignItems: 'center',
   },
   filterTab: {
-    flex: 1,
     paddingVertical: 8,
     paddingHorizontal: 12,
-    marginHorizontal: 4,
     borderRadius: 8,
     alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 85,
+    backgroundColor: '#F0F0F0',
   },
   activeFilterTab: {
     backgroundColor: '#007AFF',
   },
   filterText: {
-    fontSize: 14,
+    fontSize: 11,
     color: '#666',
     fontWeight: '500',
   },
@@ -531,6 +970,21 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#333',
     flex: 1,
+  },
+  badgesContainer: {
+    flexDirection: 'row',
+    gap: 6,
+    alignItems: 'center',
+  },
+  urgencyBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  urgencyText: {
+    fontSize: 11,
+    color: '#fff',
+    fontWeight: '700',
   },
   statusBadge: {
     paddingHorizontal: 8,
@@ -634,6 +1088,9 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   staffItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#E1E5E9',
@@ -666,4 +1123,224 @@ const styles = StyleSheet.create({
     color: '#666',
     fontWeight: '600',
   },
-}); 
+  label: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 8,
+    marginTop: 8,
+  },
+  noteInput: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 12,
+    minHeight: 80,
+    fontSize: 14,
+    backgroundColor: '#fff',
+    marginBottom: 16,
+    textAlignVertical: 'top',
+  },
+  // Multi-staff assignment styles
+  staffInfo: {
+    flex: 1,
+  },
+  selectedStaffItem: {
+    backgroundColor: '#E3F2FD',
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderWidth: 2,
+    borderColor: '#007AFF',
+    borderRadius: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkedBox: {
+    backgroundColor: '#007AFF',
+  },
+  checkmark: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  modalButtons: {
+    marginTop: 16,
+    gap: 12,
+  },
+  assignButton: {
+    padding: 14,
+    backgroundColor: '#007AFF',
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  disabledButton: {
+    backgroundColor: '#B0B0B0',
+    opacity: 0.6,
+  },
+  assignButtonText: {
+    fontSize: 16,
+    color: '#fff',
+    fontWeight: '600',
+  },
+  assignedStaffContainer: {
+    marginVertical: 8,
+    padding: 8,
+    backgroundColor: '#F0F4FF',
+    borderRadius: 8,
+  },
+  assignedStaffLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 6,
+  },
+  assignedStaffList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  staffChip: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  staffChipText: {
+    fontSize: 12,
+    color: '#fff',
+    fontWeight: '500',
+  },
+  assignmentTypeSelector: {
+    flexDirection: 'row',
+    marginBottom: 16,
+    backgroundColor: '#F0F0F0',
+    borderRadius: 8,
+    padding: 4,
+  },
+  typeButton: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    alignItems: 'center',
+  },
+  activeTypeButton: {
+    backgroundColor: '#007AFF',
+  },
+  typeButtonText: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '600',
+  },
+  activeTypeButtonText: {
+    color: '#fff',
+  },
+  staffTeam: {
+    fontSize: 12,
+    color: '#007AFF',
+    marginTop: 2,
+  },
+  teamDescriptionSmall: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 4,
+  },
+  busyBadge: {
+    backgroundColor: '#FFF3CD',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginTop: 6,
+    alignSelf: 'flex-start',
+  },
+  busyBadgeText: {
+    fontSize: 11,
+    color: '#856404',
+    fontWeight: '600',
+  },
+  availableBadge: {
+    backgroundColor: '#D4EDDA',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginTop: 6,
+    alignSelf: 'flex-start',
+  },
+  availableBadgeText: {
+    fontSize: 11,
+    color: '#155724',
+    fontWeight: '600',
+  },
+  duplicateBadge: {
+    backgroundColor: '#FF9500',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginLeft: 6,
+  },
+  duplicateBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  duplicateLinkBadge: {
+    backgroundColor: '#6C757D',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginLeft: 6,
+  },
+  duplicateLinkBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  resubmissionBadge: {
+    backgroundColor: '#FF9500',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginLeft: 6,
+  },
+  resubmissionBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  resubmissionNote: {
+    backgroundColor: '#FFF3CD',
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#FF9500',
+  },
+  resubmissionNoteLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#856404',
+    marginBottom: 4,
+  },
+  resubmissionNoteText: {
+    fontSize: 12,
+    color: '#856404',
+    fontStyle: 'italic',
+  },
+  multipleReportersNote: {
+    backgroundColor: '#E8F4FD',
+    padding: 8,
+    borderRadius: 6,
+    marginBottom: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#007AFF',
+  },
+  multipleReportersText: {
+    fontSize: 12,
+    color: '#0056B3',
+    fontWeight: '600',
+  },
+});
+
+export default AdminReportsScreen;

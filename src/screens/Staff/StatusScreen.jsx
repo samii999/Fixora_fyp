@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, SafeAreaView } from 'react-native';
-import { doc, getDoc } from 'firebase/firestore';
+import { View, Text, StyleSheet, ActivityIndicator, SafeAreaView, TouchableOpacity, RefreshControl, ScrollView } from 'react-native';
+import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../../config/firebaseConfig';
 import { useAuth } from '../../context/AuthContext';
+import BlueHeader from '../../components/layout/Header';
 
 const StatusScreen = () => {
   const { user } = useAuth();
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   const fetchStatus = async () => {
     try {
@@ -24,12 +26,33 @@ const StatusScreen = () => {
       setStatus('Error loading status');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
-  useEffect(() => {
+  const onRefresh = () => {
+    setRefreshing(true);
     fetchStatus();
-  }, []);
+  };
+
+  useEffect(() => {
+    // Set up real-time listener
+    const docRef = doc(db, 'users', user.uid);
+    const unsubscribe = onSnapshot(docRef, (snap) => {
+      if (snap.exists()) {
+        setStatus(snap.data().status);
+      } else {
+        setStatus('No request found');
+      }
+      setLoading(false);
+    }, (err) => {
+      console.error('Error in status listener:', err);
+      setStatus('Error loading status');
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [user.uid]);
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -60,6 +83,7 @@ const StatusScreen = () => {
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
+        <BlueHeader title="Request Status" subtitle="Your organization join request" />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#007AFF" />
           <Text style={styles.loadingText}>Loading status...</Text>
@@ -70,49 +94,57 @@ const StatusScreen = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Request Status</Text>
-        <Text style={styles.subtitle}>Your organization join request</Text>
-      </View>
+      <BlueHeader title="Request Status" subtitle="Your organization join request" />
       
-      <View style={styles.statusCard}>
-        <Text style={styles.statusLabel}>Current Status:</Text>
-        <Text style={[styles.statusText, { color: getStatusColor(status) }]}>
-          {getStatusText(status)}
-        </Text>
-        
-        {status === 'active' && (
-          <View style={styles.messageContainer}>
-            <Text style={styles.messageText}>
-              🎉 Congratulations! Your request has been approved. You can now access staff features.
-            </Text>
-          </View>
-        )}
-        
-        {status === 'rejected' && (
-          <View style={styles.messageContainer}>
-            <Text style={styles.messageText}>
-              ❌ Your request was not approved. Please contact the organization administrator for more information.
-            </Text>
-          </View>
-        )}
-        
-        {status === 'pending' && (
-          <View style={styles.messageContainer}>
-            <Text style={styles.messageText}>
-              ⏳ Your request is currently under review. You will be notified once a decision is made.
-            </Text>
-          </View>
-        )}
-        
-        {status === 'No request found' && (
-          <View style={styles.messageContainer}>
-            <Text style={styles.messageText}>
-              📝 You haven't submitted a request to join an organization yet.
-            </Text>
-          </View>
-        )}
-      </View>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#007AFF"
+          />
+        }
+      >
+        <View style={styles.statusCard}>
+          <Text style={styles.statusLabel}>Current Status:</Text>
+          <Text style={[styles.statusText, { color: getStatusColor(status) }]}>
+            {getStatusText(status)}
+          </Text>
+          
+          {status === 'active' && (
+            <View style={styles.messageContainer}>
+              <Text style={styles.messageText}>
+                🎉 Congratulations! Your request has been approved. You can now access staff features.
+              </Text>
+            </View>
+          )}
+          
+          {status === 'rejected' && (
+            <View style={styles.messageContainer}>
+              <Text style={styles.messageText}>
+                ❌ Your request was not approved. Please contact the organization administrator for more information.
+              </Text>
+            </View>
+          )}
+          
+          {status === 'pending' && (
+            <View style={styles.messageContainer}>
+              <Text style={styles.messageText}>
+                ⏳ Your request is currently under review. You will be notified once a decision is made. Pull down to refresh.
+              </Text>
+            </View>
+          )}
+          
+          {status === 'No request found' && (
+            <View style={styles.messageContainer}>
+              <Text style={styles.messageText}>
+                📝 You haven't submitted a request to join an organization yet.
+              </Text>
+            </View>
+          )}
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 };
@@ -129,6 +161,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#E1E5E9',
+  },
+  scrollContent: {
+    flexGrow: 1,
   },
   title: {
     fontSize: 24,
