@@ -7,14 +7,14 @@ import { getFirestore } from "firebase/firestore";
 // import { getAnalytics } from "firebase/analytics";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyC_cA4gbFrQeqPpmYQUOy09SoCASAav_bU",
-  authDomain: "fixora-6e85b.firebaseapp.com",
-  databaseURL: "https://fixora-6e85b-default-rtdb.firebaseio.com",
-  projectId: "fixora-6e85b",
-  storageBucket: "fixora-6e85b.firebasestorage.app",
-  messagingSenderId: "477321569879",
-  appId: "1:477321569879:web:7dde80c83b9f1977252512",
-  measurementId: "G-XXNLKQREBZ"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  databaseURL: `https://${import.meta.env.VITE_FIREBASE_PROJECT_ID}-default-rtdb.firebaseio.com`,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
 // Initialize Firebase
